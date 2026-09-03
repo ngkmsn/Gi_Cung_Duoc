@@ -19,6 +19,7 @@ interface MapLibreMapTilerViewProps {
   onSelectRestaurant: (restaurant: Restaurant | null) => void;
   onOpenDetail?: (restaurant: Restaurant) => void;
   userLocation?: { latitude: number; longitude: number };
+  selectedRadiusKm?: number | null;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -35,6 +36,7 @@ export function MapLibreMapTilerView({
   onSelectRestaurant,
   onOpenDetail,
   userLocation = DEFAULT_USER_LOCATION,
+  selectedRadiusKm = null,
 }: MapLibreMapTilerViewProps) {
   const webViewRef = useRef<WebView>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -43,6 +45,7 @@ export function MapLibreMapTilerView({
     const userLat = userLocation.latitude;
     const userLng = userLocation.longitude;
     const maptilerKey = Config.MAPTILER_API_KEY || '';
+    const initialRadius = selectedRadiusKm || 0;
 
     const restaurantsJson = JSON.stringify(
       restaurants.map((r) => ({
@@ -133,18 +136,17 @@ export function MapLibreMapTilerView({
 
   <script>
     const userLocation = [${userLng}, ${userLat}];
-    const restaurants = ${restaurantsJson};
+    let restaurants = ${restaurantsJson};
     let activeId = "${selectedRestaurant?.id || ''}";
-    const markersMap = {};
+    let currentRadiusKm = ${initialRadius};
+    let markersMap = {};
 
-    // Ultra-detailed map style with full street names, building footprints, house numbers, rivers & landmarks
     let mapStyle;
     const maptilerKey = "${maptilerKey}".trim();
 
     if (maptilerKey.length > 0) {
       mapStyle = 'https://api.maptiler.com/maps/streets-v2/style.json?key=' + maptilerKey;
     } else {
-      // High-resolution Retina detailed street tile layer (CartoDB Voyager + OSM)
       mapStyle = {
         version: 8,
         sources: {
@@ -173,11 +175,19 @@ export function MapLibreMapTilerView({
       };
     }
 
+    function calculateInitialZoom(radiusKm) {
+      if (!radiusKm) return 14.2;
+      if (radiusKm <= 1) return 15.0;
+      if (radiusKm <= 3) return 13.8;
+      if (radiusKm <= 5) return 12.8;
+      return 11.8;
+    }
+
     const map = new maplibregl.Map({
       container: 'map',
       style: mapStyle,
       center: userLocation,
-      zoom: 14.2,
+      zoom: calculateInitialZoom(currentRadiusKm),
       pitch: 0,
       attributionControl: false
     });
@@ -189,25 +199,91 @@ export function MapLibreMapTilerView({
       .setLngLat(userLocation)
       .addTo(map);
 
-    // Add Restaurant Markers
-    restaurants.forEach(r => {
-      if (!r.lat || !r.lng) return;
+    function createGeoJSONCircle(center, radiusInKm, points = 64) {
+      if (!radiusInKm) return { type: 'FeatureCollection', features: [] };
+      const coords = { latitude: center[1], longitude: center[0] };
+      const km = radiusInKm;
+      const ret = [];
+      const distanceX = km / (111.320 * Math.cos((coords.latitude * Math.PI) / 180));
+      const distanceY = km / 110.574;
 
-      const el = document.createElement('div');
-      el.className = 'food-marker' + (r.id === activeId ? ' active' : '');
-      el.innerHTML = '<span>' + r.icon + '</span><span>' + r.name + '</span><span class="price">• ' + r.price + '</span>';
+      for (let i = 0; i < points; i++) {
+        const theta = (i / points) * (2 * Math.PI);
+        const x = distanceX * Math.cos(theta);
+        const y = distanceY * Math.sin(theta);
+        ret.push([coords.longitude + x, coords.latitude + y]);
+      }
+      ret.push(ret[0]);
+      return {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [ret]
+          }
+        }]
+      };
+    }
 
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        sendSelection(r.id);
+    map.on('load', () => {
+      // Add Radius Circle Source and Layers
+      map.addSource('radius-circle-source', {
+        type: 'geojson',
+        data: createGeoJSONCircle(userLocation, currentRadiusKm)
       });
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([r.lng, r.lat])
-        .addTo(map);
+      map.addLayer({
+        id: 'radius-circle-fill',
+        type: 'fill',
+        source: 'radius-circle-source',
+        paint: {
+          'fill-color': '#3B82F6',
+          'fill-opacity': 0.08
+        }
+      });
 
-      markersMap[r.id] = { marker, el, lat: r.lat, lng: r.lng };
+      map.addLayer({
+        id: 'radius-circle-line',
+        type: 'line',
+        source: 'radius-circle-source',
+        paint: {
+          'line-color': '#2563EB',
+          'line-width': 2,
+          'line-dasharray': [3, 2],
+          'line-opacity': 0.75
+        }
+      });
+
+      renderMarkers();
     });
+
+    function renderMarkers() {
+      // Clear old markers
+      Object.keys(markersMap).forEach(id => {
+        markersMap[id].marker.remove();
+      });
+      markersMap = {};
+
+      restaurants.forEach(r => {
+        if (!r.lat || !r.lng) return;
+
+        const el = document.createElement('div');
+        el.className = 'food-marker' + (r.id === activeId ? ' active' : '');
+        el.innerHTML = '<span>' + r.icon + '</span><span>' + r.name + '</span><span class="price">• ' + r.price + '</span>';
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sendSelection(r.id);
+        });
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([r.lng, r.lat])
+          .addTo(map);
+
+        markersMap[r.id] = { marker, el, lat: r.lat, lng: r.lng };
+      });
+    }
 
     map.on('click', () => {
       sendSelection(null);
@@ -247,8 +323,20 @@ export function MapLibreMapTilerView({
           if (target) {
             map.flyTo({ center: [target.lng, target.lat], zoom: 16, speed: 1.2 });
           }
+        } else if (data.type === 'SET_RADIUS') {
+          currentRadiusKm = data.radiusKm || 0;
+          const source = map.getSource('radius-circle-source');
+          if (source) {
+            source.setData(createGeoJSONCircle(userLocation, currentRadiusKm));
+          }
+          if (currentRadiusKm > 0) {
+            map.flyTo({ center: userLocation, zoom: calculateInitialZoom(currentRadiusKm), speed: 1.2 });
+          }
+        } else if (data.type === 'UPDATE_RESTAURANTS' && Array.isArray(data.restaurants)) {
+          restaurants = data.restaurants;
+          renderMarkers();
         } else if (data.type === 'RECENTER') {
-          map.flyTo({ center: userLocation, zoom: 14.5, speed: 1.2 });
+          map.flyTo({ center: userLocation, zoom: calculateInitialZoom(currentRadiusKm), speed: 1.2 });
         } else if (data.type === 'ZOOM_IN') {
           map.zoomIn();
         } else if (data.type === 'ZOOM_OUT') {
@@ -260,7 +348,7 @@ export function MapLibreMapTilerView({
 </body>
 </html>
 `;
-  }, [restaurants, selectedRestaurant?.id, userLocation]);
+  }, [userLocation]);
 
   // Handle messages from Web / WebView
   const handleMessage = (event: any) => {
@@ -281,7 +369,7 @@ export function MapLibreMapTilerView({
     } catch (err) {}
   };
 
-  // Sync selection to Web / WebView
+  // Sync selected restaurant
   useEffect(() => {
     const payload = JSON.stringify({
       type: 'SET_SELECTED',
@@ -294,6 +382,42 @@ export function MapLibreMapTilerView({
       webViewRef.current?.postMessage(payload);
     }
   }, [selectedRestaurant?.id]);
+
+  // Sync radius circle changes
+  useEffect(() => {
+    const payload = JSON.stringify({
+      type: 'SET_RADIUS',
+      radiusKm: selectedRadiusKm || 0,
+    });
+
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(payload, '*');
+    } else {
+      webViewRef.current?.postMessage(payload);
+    }
+  }, [selectedRadiusKm]);
+
+  // Sync restaurant list changes
+  useEffect(() => {
+    const payload = JSON.stringify({
+      type: 'UPDATE_RESTAURANTS',
+      restaurants: restaurants.map((r) => ({
+        id: r.id,
+        name: r.name,
+        address: r.address || '',
+        lat: typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude,
+        lng: typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude,
+        price: r.price_range || '$',
+        icon: CATEGORY_ICONS[r.categories?.[0]?.slug?.toLowerCase() || 'vietnamese'] || '🍽️',
+      })),
+    });
+
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(payload, '*');
+    } else {
+      webViewRef.current?.postMessage(payload);
+    }
+  }, [restaurants]);
 
   const handleZoomIn = () => {
     const payload = JSON.stringify({ type: 'ZOOM_IN' });
@@ -469,7 +593,7 @@ const styles = StyleSheet.create({
   mapControlsColumn: {
     position: 'absolute',
     right: 16,
-    top: Platform.OS === 'web' ? 110 : 130,
+    top: Platform.OS === 'web' ? 140 : 160,
     gap: 8,
     zIndex: 30,
   },

@@ -551,6 +551,21 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
 export interface SearchLocationParams {
   latitude?: number;
   longitude?: number;
+  radius?: number; // In km (e.g., 1, 3, 5, 10) or meters
+}
+
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export async function searchRestaurants(
@@ -583,13 +598,27 @@ export async function searchRestaurants(
     if (location?.latitude && location?.longitude) {
       const userLat = location.latitude;
       const userLng = location.longitude;
+      const radiusKm = location.radius ? (location.radius > 50 ? location.radius / 1000 : location.radius) : undefined;
+
+      // Filter by radius if provided
+      if (radiusKm) {
+        results = results.filter((r) => {
+          const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
+          const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
+          if (!lat || !lng) return false;
+          const dist = calculateDistanceKm(userLat, userLng, lat, lng);
+          return dist <= radiusKm;
+        });
+      }
+
+      // Sort by distance
       return [...results].sort((a, b) => {
         const latA = typeof a.latitude === 'string' ? parseFloat(a.latitude) : a.latitude;
         const lngA = typeof a.longitude === 'string' ? parseFloat(a.longitude) : a.longitude;
         const latB = typeof b.latitude === 'string' ? parseFloat(b.latitude) : b.latitude;
         const lngB = typeof b.longitude === 'string' ? parseFloat(b.longitude) : b.longitude;
-        const distA = Math.hypot(latA - userLat, lngA - userLng);
-        const distB = Math.hypot(latB - userLat, lngB - userLng);
+        const distA = calculateDistanceKm(userLat, userLng, latA, lngA);
+        const distB = calculateDistanceKm(userLat, userLng, latB, lngB);
         return distA - distB;
       });
     }
@@ -608,6 +637,10 @@ export async function searchRestaurants(
     if (trimmedQuery) searchParams.append('query', trimmedQuery);
     if (location?.latitude) searchParams.append('latitude', location.latitude.toString());
     if (location?.longitude) searchParams.append('longitude', location.longitude.toString());
+    if (location?.radius) {
+      const radiusMeters = location.radius > 50 ? location.radius : location.radius * 1000;
+      searchParams.append('radius', radiusMeters.toString());
+    }
 
     const queryString = searchParams.toString();
     const url = queryString ? `${endpoint}?${queryString}` : endpoint;
@@ -644,6 +677,19 @@ export async function searchRestaurants(
         return matchName || matchAddress || matchSpecialty || matchCategory;
       });
     }
+
+    if (location?.latitude && location?.longitude && location?.radius) {
+      const userLat = location.latitude;
+      const userLng = location.longitude;
+      const radiusKm = location.radius > 50 ? location.radius / 1000 : location.radius;
+      results = results.filter((r) => {
+        const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
+        const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
+        if (!lat || !lng) return false;
+        return calculateDistanceKm(userLat, userLng, lat, lng) <= radiusKm;
+      });
+    }
+
     return results;
   }
 }

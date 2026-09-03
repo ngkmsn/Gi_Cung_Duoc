@@ -33,10 +33,10 @@ export class RestaurantService {
 
     // 1. If Google Places API is configured, search real-time places from Google Places (New)
     if (this.googlePlacesService.isAvailable()) {
-      this.logger.log(`Searching Google Places API (New) for query: "${trimmedQuery}" around coordinates: ${location?.latitude}, ${location?.longitude}`);
+      this.logger.log(`Searching Google Places API (New) for query: "${trimmedQuery}" around coordinates: ${location?.latitude}, ${location?.longitude}, radius: ${location?.radius}`);
       const places = await this.googlePlacesService.searchPlaces(trimmedQuery, location);
       if (places && places.length > 0) {
-        return this.sortByDistance(places, location);
+        return this.filterAndSortByDistance(places, location);
       }
     }
 
@@ -58,18 +58,33 @@ export class RestaurantService {
       });
     }
 
-    return this.sortByDistance(results, location);
+    return this.filterAndSortByDistance(results, location);
   }
 
-  private sortByDistance(restaurants: any[], location?: SearchLocationOptions): any[] {
+  private filterAndSortByDistance(restaurants: any[], location?: SearchLocationOptions): any[] {
     if (!location?.latitude || !location?.longitude) {
       return restaurants;
     }
 
     const userLat = location.latitude;
     const userLng = location.longitude;
+    const radiusKm = location.radius
+      ? location.radius > 50
+        ? location.radius / 1000
+        : location.radius
+      : undefined;
 
-    return [...restaurants].sort((a, b) => {
+    let filtered = restaurants;
+    if (radiusKm) {
+      filtered = filtered.filter((r) => {
+        const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
+        const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
+        if (!lat || !lng) return false;
+        return calculateDistanceKm(userLat, userLng, lat, lng) <= radiusKm;
+      });
+    }
+
+    return [...filtered].sort((a, b) => {
       const latA = typeof a.latitude === 'string' ? parseFloat(a.latitude) : a.latitude;
       const lngA = typeof a.longitude === 'string' ? parseFloat(a.longitude) : a.longitude;
       const latB = typeof b.latitude === 'string' ? parseFloat(b.latitude) : b.latitude;

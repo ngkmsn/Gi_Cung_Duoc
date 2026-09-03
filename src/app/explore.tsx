@@ -22,8 +22,16 @@ import { useUserLocation } from '@/hooks/use-user-location';
 import { searchRestaurants } from '@/services/restaurantService';
 import { Restaurant } from '@/types/restaurant';
 
+const RADIUS_OPTIONS = [
+  { id: 'all', label: '🎯 Tất cả', value: null },
+  { id: '1km', label: '📍 1 km', value: 1 },
+  { id: '3km', label: '📍 3 km', value: 3 },
+  { id: '5km', label: '📍 5 km', value: 5 },
+  { id: '10km', label: '📍 10 km', value: 10 },
+];
+
 const FILTER_TAGS = [
-  { id: 'all', label: 'Tất cả', value: '' },
+  { id: 'all', label: 'Tất cả món', value: '' },
   { id: 'vietnamese', label: '🍜 Món Việt', value: 'vietnamese' },
   { id: 'coffee', label: '☕ Cà Phê', value: 'coffee' },
   { id: 'western', label: '🍕 Đồ Tây', value: 'western' },
@@ -39,6 +47,7 @@ export default function RestaurantSearchScreen() {
 
   const [query, setQuery] = useState(params.search || '');
   const [activeTag, setActiveTag] = useState(params.search || '');
+  const [selectedRadius, setSelectedRadius] = useState<number | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [detailModalRestaurant, setDetailModalRestaurant] = useState<Restaurant | null>(null);
@@ -47,7 +56,7 @@ export default function RestaurantSearchScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchRestaurants = useCallback(
-    async (searchQuery: string, isRefresh = false) => {
+    async (searchQuery: string, radiusVal: number | null = selectedRadius, isRefresh = false) => {
       if (isRefresh) {
         setRefreshing(true);
       } else {
@@ -59,6 +68,7 @@ export default function RestaurantSearchScreen() {
         const results = await searchRestaurants(searchQuery, {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
+          radius: radiusVal ?? undefined,
         });
         setRestaurants(results);
         if (results.length > 0 && selectedRestaurant) {
@@ -72,7 +82,7 @@ export default function RestaurantSearchScreen() {
         setRefreshing(false);
       }
     },
-    [selectedRestaurant, userLoc.latitude, userLoc.longitude]
+    [selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
   );
 
   // Sync params or location if changed
@@ -80,24 +90,29 @@ export default function RestaurantSearchScreen() {
     const initialQuery = params.search || '';
     setQuery(initialQuery);
     setActiveTag(initialQuery);
-    fetchRestaurants(initialQuery);
-  }, [params.search, fetchRestaurants]);
+    fetchRestaurants(initialQuery, selectedRadius);
+  }, [params.search, fetchRestaurants, selectedRadius]);
 
   const handleSearch = (searchVal: string = query) => {
     setActiveTag(searchVal);
-    fetchRestaurants(searchVal);
+    fetchRestaurants(searchVal, selectedRadius);
   };
 
   const handleSelectTag = (tagVal: string) => {
     setActiveTag(tagVal);
     setQuery(tagVal);
-    fetchRestaurants(tagVal);
+    fetchRestaurants(tagVal, selectedRadius);
+  };
+
+  const handleSelectRadius = (radiusVal: number | null) => {
+    setSelectedRadius(radiusVal);
+    fetchRestaurants(query, radiusVal);
   };
 
   const handleClear = () => {
     setQuery('');
     setActiveTag('');
-    fetchRestaurants('');
+    fetchRestaurants('', selectedRadius);
   };
 
   const handleOpenDetail = (restaurant: Restaurant) => {
@@ -109,19 +124,20 @@ export default function RestaurantSearchScreen() {
 
   return (
     <ThemedView style={styles.screenContainer}>
-      {/* 1. MapLibre + MapTiler Embedded Interactive Map with Real GPS Location */}
+      {/* 1. MapLibre + MapTiler Embedded Interactive Map with Radius Circle */}
       <MapLibreMapTilerView
         restaurants={restaurants}
         selectedRestaurant={selectedRestaurant}
         onSelectRestaurant={setSelectedRestaurant}
         onOpenDetail={handleOpenDetail}
+        selectedRadiusKm={selectedRadius}
         userLocation={{
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
         }}
       />
 
-      {/* 2. Floating Top Header: Search Bar & Category Filters */}
+      {/* 2. Floating Top Header: Search Bar & Radius + Category Filters */}
       <View
         style={[
           styles.floatingHeaderContainer,
@@ -168,7 +184,7 @@ export default function RestaurantSearchScreen() {
           </View>
         </View>
 
-        {/* Location Status Pill & Quick Filter Tag Chips Carousel */}
+        {/* Filters Carousel Row 1: Radius Selector */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -187,6 +203,32 @@ export default function RestaurantSearchScreen() {
             </ThemedText>
           </Pressable>
 
+          {/* Radius Selector Pills */}
+          {RADIUS_OPTIONS.map((opt) => {
+            const isSelected = selectedRadius === opt.value;
+            return (
+              <Pressable
+                key={opt.id}
+                onPress={() => handleSelectRadius(opt.value)}
+                style={({ pressed }) => [
+                  styles.radiusChip,
+                  isSelected ? styles.radiusChipSelected : styles.radiusChipNormal,
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText
+                  style={[
+                    styles.radiusChipText,
+                    isSelected && styles.radiusChipTextSelected,
+                  ]}>
+                  {opt.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+
+          <View style={styles.filterDivider} />
+
+          {/* Category Chips */}
           {FILTER_TAGS.map((tag) => {
             const isSelected = activeTag.toLowerCase() === tag.value.toLowerCase();
             return (
@@ -235,7 +277,7 @@ export default function RestaurantSearchScreen() {
           longitude: userLoc.longitude,
         }}
         refreshing={refreshing}
-        onRefresh={() => fetchRestaurants(query, true)}
+        onRefresh={() => fetchRestaurants(query, selectedRadius, true)}
         bottomInset={bottomInset}
       />
 
@@ -337,6 +379,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#1D4ED8',
+  },
+  radiusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  radiusChipNormal: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#CBD5E1',
+  },
+  radiusChipSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  radiusChipText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  radiusChipTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  filterDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#CBD5E1',
+    marginHorizontal: 2,
   },
   filterChip: {
     paddingHorizontal: 12,
