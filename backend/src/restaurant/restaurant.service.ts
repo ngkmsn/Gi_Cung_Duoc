@@ -92,8 +92,19 @@ export class RestaurantService {
   private filterAndSortByDistance(restaurants: any[], location?: SearchLocationOptions): any[] {
     let filtered = restaurants;
 
-    // Filter by price range
-    if (location?.price_range) {
+    // Filter by max budget in VNĐ
+    if (location?.max_budget && location.max_budget > 0) {
+      const budget = location.max_budget;
+      filtered = filtered.filter((r) => {
+        if (r.min_price !== undefined && r.min_price !== null) {
+          return r.min_price <= budget;
+        }
+        if (r.price_range === '$') return 50000 <= budget;
+        if (r.price_range === '$$') return 100000 <= budget;
+        if (r.price_range === '$$$') return 250000 <= budget;
+        return true;
+      });
+    } else if (location?.price_range) {
       filtered = filtered.filter((r) => r.price_range === location.price_range);
     }
 

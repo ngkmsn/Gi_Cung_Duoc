@@ -7,6 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { Restaurant } from '@/types/restaurant';
 import { calculateDistanceKm, DEFAULT_USER_LOCATION, formatDistance } from '@/utils/distance';
 import { openMapsNavigation } from '@/utils/navigation';
+import { formatRestaurantPrice } from '@/utils/price';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -108,11 +109,11 @@ export function RestaurantCard({
             </ThemedText>
           </View>
 
-          {restaurant.price_range && (
-            <View style={styles.pricePill}>
-              <ThemedText style={styles.priceText}>{restaurant.price_range}</ThemedText>
-            </View>
-          )}
+          <View style={styles.pricePill}>
+            <ThemedText style={styles.priceText}>
+              💰 {formatRestaurantPrice(restaurant.min_price, restaurant.max_price, restaurant.price_range)}
+            </ThemedText>
+          </View>
         </View>
 
         {/* Rating and Reviews Row */}

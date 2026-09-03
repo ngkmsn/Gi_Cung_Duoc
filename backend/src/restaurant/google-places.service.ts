@@ -41,6 +41,7 @@ export interface SearchLocationOptions {
   latitude?: number;
   longitude?: number;
   radius?: number;
+  max_budget?: number;
   price_range?: string;
   open_now?: boolean;
 }
@@ -137,9 +138,21 @@ export class GooglePlacesService {
   private mapGooglePlaceToRestaurant(place: GooglePlace) {
     // Map price level
     let priceRange = '$';
-    if (place.priceLevel === 'PRICE_LEVEL_MODERATE') priceRange = '$$';
-    else if (place.priceLevel === 'PRICE_LEVEL_EXPENSIVE') priceRange = '$$$';
-    else if (place.priceLevel === 'PRICE_LEVEL_VERY_EXPENSIVE') priceRange = '$$$$';
+    let minPrice = 30000;
+    let maxPrice = 65000;
+    if (place.priceLevel === 'PRICE_LEVEL_MODERATE') {
+      priceRange = '$$';
+      minPrice = 70000;
+      maxPrice = 180000;
+    } else if (place.priceLevel === 'PRICE_LEVEL_EXPENSIVE') {
+      priceRange = '$$$';
+      minPrice = 180000;
+      maxPrice = 500000;
+    } else if (place.priceLevel === 'PRICE_LEVEL_VERY_EXPENSIVE') {
+      priceRange = '$$$$';
+      minPrice = 500000;
+      maxPrice = 1800000;
+    }
 
     // Map photo URL
     let imageUrl = 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80';
@@ -188,6 +201,8 @@ export class GooglePlacesService {
       latitude: place.location?.latitude || 21.0285,
       longitude: place.location?.longitude || 105.8542,
       price_range: priceRange,
+      min_price: minPrice,
+      max_price: maxPrice,
       image_url: imageUrl,
       rating: place.rating || 4.6,
       review_count: place.userRatingCount || 100,

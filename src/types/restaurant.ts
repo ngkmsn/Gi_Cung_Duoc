@@ -30,6 +30,9 @@ export interface Restaurant {
   latitude: number | string;
   longitude: number | string;
   price_range?: string | null;
+  min_price?: number | null;
+  max_price?: number | null;
+  price_formatted?: string | null;
   image_url?: string | null;
   rating?: number;
   review_count?: number;

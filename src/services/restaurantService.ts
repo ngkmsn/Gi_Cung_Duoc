@@ -9,6 +9,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.018318,
     longitude: 105.856621,
     price_range: '$',
+    min_price: 65000,
+    max_price: 90000,
     image_url: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 1420,
@@ -36,6 +38,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.01889,
     longitude: 105.85412,
     price_range: '$',
+    min_price: 50000,
+    max_price: 110000,
     image_url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 2350,
@@ -63,6 +67,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0331,
     longitude: 105.8539,
     price_range: '$',
+    min_price: 35000,
+    max_price: 60000,
     image_url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
     rating: 4.9,
     review_count: 3100,
@@ -91,6 +97,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.03608,
     longitude: 105.84962,
     price_range: '$',
+    min_price: 25000,
+    max_price: 45000,
     image_url: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 2890,
@@ -118,6 +126,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0258,
     longitude: 105.8554,
     price_range: '$$$',
+    min_price: 150000,
+    max_price: 350000,
     image_url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=800&q=80',
     rating: 4.9,
     review_count: 4200,
@@ -145,6 +155,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.03651,
     longitude: 105.84883,
     price_range: '$$',
+    min_price: 130000,
+    max_price: 200000,
     image_url: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
     rating: 4.6,
     review_count: 1800,
@@ -172,6 +184,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0315,
     longitude: 105.8164,
     price_range: '$$$',
+    min_price: 200000,
+    max_price: 500000,
     image_url: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 950,
@@ -199,6 +213,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0245,
     longitude: 105.8542,
     price_range: '$',
+    min_price: 15000,
+    max_price: 40000,
     image_url: 'https://images.unsplash.com/photo-1501443762994-82bd5dace89a?auto=format&fit=crop&w=800&q=80',
     rating: 4.9,
     review_count: 5200,
@@ -227,6 +243,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.03165,
     longitude: 105.85194,
     price_range: '$',
+    min_price: 40000,
+    max_price: 80000,
     image_url: 'https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 2100,
@@ -255,6 +273,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.02511,
     longitude: 105.84532,
     price_range: '$$',
+    min_price: 70000,
+    max_price: 180000,
     image_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 3400,
@@ -282,6 +302,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0346,
     longitude: 105.8475,
     price_range: '$',
+    min_price: 55000,
+    max_price: 85000,
     image_url: 'https://images.unsplash.com/photo-1594998893017-36147cbcae05?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 2450,
@@ -309,6 +331,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0312,
     longitude: 105.8533,
     price_range: '$',
+    min_price: 25000,
+    max_price: 50000,
     image_url: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 1870,
@@ -336,6 +360,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0435,
     longitude: 105.8202,
     price_range: '$',
+    min_price: 45000,
+    max_price: 80000,
     image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
     rating: 4.6,
     review_count: 1560,
@@ -363,6 +389,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0298,
     longitude: 105.8436,
     price_range: '$$',
+    min_price: 60000,
+    max_price: 150000,
     image_url: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 1320,
@@ -390,6 +418,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0243,
     longitude: 105.8247,
     price_range: '$$',
+    min_price: 80000,
+    max_price: 220000,
     image_url: 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 1670,
@@ -417,6 +447,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0092,
     longitude: 105.8015,
     price_range: '$$$',
+    min_price: 180000,
+    max_price: 400000,
     image_url: 'https://images.unsplash.com/photo-1611143669185-af224c5e3252?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 1100,
@@ -444,6 +476,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0068,
     longitude: 105.8315,
     price_range: '$',
+    min_price: 30000,
+    max_price: 60000,
     image_url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80',
     rating: 4.8,
     review_count: 1950,
@@ -472,6 +506,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0118,
     longitude: 105.8182,
     price_range: '$$',
+    min_price: 150000,
+    max_price: 280000,
     image_url: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
     rating: 4.7,
     review_count: 2200,
@@ -499,6 +535,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0342,
     longitude: 105.8499,
     price_range: '$',
+    min_price: 20000,
+    max_price: 45000,
     image_url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=800&q=80',
     rating: 4.9,
     review_count: 3600,
@@ -526,6 +564,8 @@ export const MOCK_RESTAURANTS: Restaurant[] = [
     latitude: 21.0253,
     longitude: 105.8569,
     price_range: '$$$$',
+    min_price: 500000,
+    max_price: 1800000,
     image_url: 'https://images.unsplash.com/photo-1558030006-450675393462?auto=format&fit=crop&w=800&q=80',
     rating: 4.9,
     review_count: 1400,
@@ -552,7 +592,8 @@ export interface SearchLocationParams {
   latitude?: number;
   longitude?: number;
   radius?: number; // In km (e.g., 1, 3, 5, 10) or meters
-  price_range?: string; // '$', '$$', '$$$', '$$$$'
+  max_budget?: number; // In VNĐ (e.g. 100000, 150000)
+  price_range?: string; // Fallback
   open_now?: boolean;
 }
 
@@ -625,8 +666,20 @@ export async function searchRestaurants(
       });
     }
 
-    // Filter by price range
-    if (location?.price_range) {
+    // Filter by max budget in VNĐ
+    if (location?.max_budget && location.max_budget > 0) {
+      const budget = location.max_budget;
+      results = results.filter((r) => {
+        if (r.min_price !== undefined && r.min_price !== null) {
+          return r.min_price <= budget;
+        }
+        // Fallback for rough ranges
+        if (r.price_range === '$') return 50000 <= budget;
+        if (r.price_range === '$$') return 100000 <= budget;
+        if (r.price_range === '$$$') return 250000 <= budget;
+        return true;
+      });
+    } else if (location?.price_range) {
       results = results.filter((r) => r.price_range === location.price_range);
     }
 
@@ -681,6 +734,9 @@ export async function searchRestaurants(
       const radiusMeters = location.radius > 50 ? location.radius : location.radius * 1000;
       searchParams.append('radius', radiusMeters.toString());
     }
+    if (location?.max_budget) {
+      searchParams.append('max_budget', location.max_budget.toString());
+    }
     if (location?.price_range) {
       searchParams.append('price_range', location.price_range);
     }
@@ -724,7 +780,10 @@ export async function searchRestaurants(
       });
     }
 
-    if (location?.price_range) {
+    if (location?.max_budget && location.max_budget > 0) {
+      const budget = location.max_budget;
+      results = results.filter((r) => (r.min_price ? r.min_price <= budget : true));
+    } else if (location?.price_range) {
       results = results.filter((r) => r.price_range === location.price_range);
     }
 

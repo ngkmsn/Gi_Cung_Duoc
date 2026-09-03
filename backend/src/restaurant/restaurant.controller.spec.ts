@@ -44,12 +44,13 @@ describe('RestaurantController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('should return restaurants matching search query with optional coordinates, price and open status', async () => {
-    const result = await controller.search('Pho Thin', '21.0285', '105.8542', '3000', '$$', 'true');
+  it('should return restaurants matching search query with optional coordinates, budget, price and open status', async () => {
+    const result = await controller.search('Pho Thin', '21.0285', '105.8542', '3000', '100000', '$$', 'true');
     expect(service.search).toHaveBeenCalledWith('Pho Thin', {
       latitude: 21.0285,
       longitude: 105.8542,
       radius: 3000,
+      max_budget: 100000,
       price_range: '$$',
       open_now: true,
     });
@@ -62,6 +63,7 @@ describe('RestaurantController', () => {
       latitude: undefined,
       longitude: undefined,
       radius: undefined,
+      max_budget: undefined,
       price_range: undefined,
       open_now: undefined,
     });

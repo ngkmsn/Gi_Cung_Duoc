@@ -15,6 +15,7 @@ import { Spacing } from '@/constants/theme';
 import { Restaurant } from '@/types/restaurant';
 import { calculateDistanceKm, DEFAULT_USER_LOCATION, formatDistance } from '@/utils/distance';
 import { openMapsNavigation } from '@/utils/navigation';
+import { formatRestaurantPrice } from '@/utils/price';
 
 interface RestaurantDetailModalProps {
   restaurant: Restaurant | null;
@@ -153,11 +154,11 @@ export function RestaurantDetailModal({
               {/* Title and Price Pill */}
               <View style={styles.titleRow}>
                 <ThemedText style={styles.restaurantTitle}>{restaurant.name}</ThemedText>
-                {restaurant.price_range && (
-                  <View style={styles.pricePill}>
-                    <ThemedText style={styles.pricePillText}>{restaurant.price_range}</ThemedText>
-                  </View>
-                )}
+                <View style={styles.pricePill}>
+                  <ThemedText style={styles.pricePillText}>
+                    💰 {formatRestaurantPrice(restaurant.min_price, restaurant.max_price, restaurant.price_range)}
+                  </ThemedText>
+                </View>
               </View>
 
               {/* Rating, Category & Reviews */}

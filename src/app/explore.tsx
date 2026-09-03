@@ -12,6 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bottom-sheet';
+import { BudgetSliderModal } from '@/components/budget-slider-modal';
 import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
 import { RestaurantDetailModal } from '@/components/restaurant-detail-modal';
 import { ThemedText } from '@/components/themed-text';
@@ -21,6 +22,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
 import { searchRestaurants } from '@/services/restaurantService';
 import { Restaurant } from '@/types/restaurant';
+import { formatVndCurrency } from '@/utils/price';
 
 const RADIUS_OPTIONS = [
   { id: 'all', label: '🎯 Tất cả', value: null },
@@ -28,14 +30,6 @@ const RADIUS_OPTIONS = [
   { id: '3km', label: '📍 3 km', value: 3 },
   { id: '5km', label: '📍 5 km', value: 5 },
   { id: '10km', label: '📍 10 km', value: 10 },
-];
-
-const PRICE_OPTIONS = [
-  { id: 'all', label: 'Tất cả giá', value: null },
-  { id: 'p1', label: '$ (Bình dân)', value: '$' },
-  { id: 'p2', label: '$$ (Vừa phải)', value: '$$' },
-  { id: 'p3', label: '$$$ (Sang trọng)', value: '$$$' },
-  { id: 'p4', label: '$$$$ (Cao cấp)', value: '$$$$' },
 ];
 
 const FILTER_TAGS = [
@@ -56,7 +50,8 @@ export default function RestaurantSearchScreen() {
   const [query, setQuery] = useState(params.search || '');
   const [activeTag, setActiveTag] = useState(params.search || '');
   const [selectedRadius, setSelectedRadius] = useState<number | null>(null);
-  const [selectedPrice, setSelectedPrice] = useState<string | null>(null);
+  const [maxBudget, setMaxBudget] = useState<number | null>(null);
+  const [isBudgetModalVisible, setIsBudgetModalVisible] = useState(false);
   const [onlyOpenNow, setOnlyOpenNow] = useState<boolean>(false);
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -70,7 +65,7 @@ export default function RestaurantSearchScreen() {
     async (
       searchQuery: string,
       radiusVal: number | null = selectedRadius,
-      priceVal: string | null = selectedPrice,
+      budgetVal: number | null = maxBudget,
       openNowVal: boolean = onlyOpenNow,
       isRefresh = false
     ) => {
@@ -86,7 +81,7 @@ export default function RestaurantSearchScreen() {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
           radius: radiusVal ?? undefined,
-          price_range: priceVal ?? undefined,
+          max_budget: budgetVal ?? undefined,
           open_now: openNowVal ? true : undefined,
         });
         setRestaurants(results);
@@ -101,7 +96,7 @@ export default function RestaurantSearchScreen() {
         setRefreshing(false);
       }
     },
-    [onlyOpenNow, selectedPrice, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
+    [maxBudget, onlyOpenNow, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
   );
 
   // Sync params or location if changed
@@ -109,42 +104,41 @@ export default function RestaurantSearchScreen() {
     const initialQuery = params.search || '';
     setQuery(initialQuery);
     setActiveTag(initialQuery);
-    fetchRestaurants(initialQuery, selectedRadius, selectedPrice, onlyOpenNow);
-  }, [params.search, fetchRestaurants, selectedRadius, selectedPrice, onlyOpenNow]);
+    fetchRestaurants(initialQuery, selectedRadius, maxBudget, onlyOpenNow);
+  }, [params.search, fetchRestaurants, selectedRadius, maxBudget, onlyOpenNow]);
 
   const handleSearch = (searchVal: string = query) => {
     setActiveTag(searchVal);
-    fetchRestaurants(searchVal, selectedRadius, selectedPrice, onlyOpenNow);
+    fetchRestaurants(searchVal, selectedRadius, maxBudget, onlyOpenNow);
   };
 
   const handleSelectTag = (tagVal: string) => {
     setActiveTag(tagVal);
     setQuery(tagVal);
-    fetchRestaurants(tagVal, selectedRadius, selectedPrice, onlyOpenNow);
+    fetchRestaurants(tagVal, selectedRadius, maxBudget, onlyOpenNow);
   };
 
   const handleSelectRadius = (radiusVal: number | null) => {
     setSelectedRadius(radiusVal);
-    fetchRestaurants(query, radiusVal, selectedPrice, onlyOpenNow);
+    fetchRestaurants(query, radiusVal, maxBudget, onlyOpenNow);
   };
 
-  const handleSelectPrice = (priceVal: string | null) => {
-    const nextPrice = selectedPrice === priceVal ? null : priceVal;
-    setSelectedPrice(nextPrice);
-    fetchRestaurants(query, selectedRadius, nextPrice, onlyOpenNow);
+  const handleApplyBudget = (budgetVal: number | null) => {
+    setMaxBudget(budgetVal);
+    fetchRestaurants(query, selectedRadius, budgetVal, onlyOpenNow);
   };
 
   const handleToggleOpenNow = () => {
     const nextOpen = !onlyOpenNow;
     setOnlyOpenNow(nextOpen);
-    fetchRestaurants(query, selectedRadius, selectedPrice, nextOpen);
+    fetchRestaurants(query, selectedRadius, maxBudget, nextOpen);
   };
 
   const handleResetFilters = () => {
     setQuery('');
     setActiveTag('');
     setSelectedRadius(null);
-    setSelectedPrice(null);
+    setMaxBudget(null);
     setOnlyOpenNow(false);
     fetchRestaurants('', null, null, false);
   };
@@ -152,7 +146,7 @@ export default function RestaurantSearchScreen() {
   const handleClear = () => {
     setQuery('');
     setActiveTag('');
-    fetchRestaurants('', selectedRadius, selectedPrice, onlyOpenNow);
+    fetchRestaurants('', selectedRadius, maxBudget, onlyOpenNow);
   };
 
   const handleOpenDetail = (restaurant: Restaurant) => {
@@ -162,7 +156,7 @@ export default function RestaurantSearchScreen() {
 
   const activeFilterCount =
     (selectedRadius ? 1 : 0) +
-    (selectedPrice ? 1 : 0) +
+    (maxBudget ? 1 : 0) +
     (onlyOpenNow ? 1 : 0) +
     (activeTag ? 1 : 0);
 
@@ -260,6 +254,24 @@ export default function RestaurantSearchScreen() {
             </Pressable>
           )}
 
+          {/* Budget Filter Pill in VNĐ */}
+          <Pressable
+            onPress={() => setIsBudgetModalVisible(true)}
+            style={({ pressed }) => [
+              styles.budgetFilterChip,
+              maxBudget !== null ? styles.budgetFilterChipActive : styles.budgetFilterChipInactive,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText style={styles.budgetChipIcon}>💰</ThemedText>
+            <ThemedText
+              style={[
+                styles.budgetChipText,
+                maxBudget !== null && styles.budgetChipTextActive,
+              ]}>
+              {maxBudget !== null ? `Ngân sách ≤ ${formatVndCurrency(maxBudget)}` : 'Ngân sách (VNĐ) ▾'}
+            </ThemedText>
+          </Pressable>
+
           {/* Open/Closed Status Toggle */}
           <Pressable
             onPress={handleToggleOpenNow}
@@ -277,31 +289,6 @@ export default function RestaurantSearchScreen() {
               Đang mở cửa
             </ThemedText>
           </Pressable>
-
-          <View style={styles.filterDivider} />
-
-          {/* Price Range Filter Pills */}
-          {PRICE_OPTIONS.slice(1).map((p) => {
-            const isSelected = selectedPrice === p.value;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => handleSelectPrice(p.value)}
-                style={({ pressed }) => [
-                  styles.priceChip,
-                  isSelected ? styles.priceChipSelected : styles.priceChipNormal,
-                  pressed && styles.pressed,
-                ]}>
-                <ThemedText
-                  style={[
-                    styles.priceChipText,
-                    isSelected && styles.priceChipTextSelected,
-                  ]}>
-                  {p.label}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
 
           <View style={styles.filterDivider} />
 
@@ -379,11 +366,19 @@ export default function RestaurantSearchScreen() {
           longitude: userLoc.longitude,
         }}
         refreshing={refreshing}
-        onRefresh={() => fetchRestaurants(query, selectedRadius, selectedPrice, onlyOpenNow, true)}
+        onRefresh={() => fetchRestaurants(query, selectedRadius, maxBudget, onlyOpenNow, true)}
         bottomInset={bottomInset}
       />
 
-      {/* 4. Rich Restaurant Detail Modal */}
+      {/* 4. Interactive VNĐ Budget Selection Modal */}
+      <BudgetSliderModal
+        visible={isBudgetModalVisible}
+        onClose={() => setIsBudgetModalVisible(false)}
+        maxBudgetVnd={maxBudget}
+        onApplyBudget={handleApplyBudget}
+      />
+
+      {/* 5. Rich Restaurant Detail Modal */}
       <RestaurantDetailModal
         restaurant={detailModalRestaurant}
         visible={Boolean(detailModalRestaurant)}
@@ -495,6 +490,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  budgetFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  budgetFilterChipActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  budgetFilterChipInactive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  budgetChipIcon: {
+    fontSize: 12,
+  },
+  budgetChipText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  budgetChipTextActive: {
+    color: '#047857',
+    fontWeight: '800',
+  },
   toggleOpenBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,34 +556,6 @@ const styles = StyleSheet.create({
   },
   toggleOpenTextActive: {
     color: '#059669',
-    fontWeight: '700',
-  },
-  priceChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  priceChipNormal: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E7EB',
-  },
-  priceChipSelected: {
-    backgroundColor: '#059669',
-    borderColor: '#059669',
-  },
-  priceChipText: {
-    fontSize: 12,
-    color: '#334155',
-    fontWeight: '600',
-  },
-  priceChipTextSelected: {
-    color: '#FFFFFF',
     fontWeight: '700',
   },
   radiusChip: {
