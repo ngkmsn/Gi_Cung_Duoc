@@ -9,6 +9,9 @@ export class Restaurant {
   @Column({ length: 255 })
   name!: string;
 
+  @Column({ length: 255, nullable: true })
+  address?: string;
+
   @Column('decimal', { precision: 10, scale: 8 })
   latitude!: number;
 

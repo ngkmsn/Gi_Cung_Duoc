@@ -1,180 +1,361 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
+import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bottom-sheet';
+import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUserLocation } from '@/hooks/use-user-location';
+import { searchRestaurants } from '@/services/restaurantService';
+import { Restaurant } from '@/types/restaurant';
 
-export default function TabTwoScreen() {
+const FILTER_TAGS = [
+  { id: 'all', label: 'Tất cả', value: '' },
+  { id: 'vietnamese', label: '🍜 Món Việt', value: 'vietnamese' },
+  { id: 'coffee', label: '☕ Cà Phê', value: 'coffee' },
+  { id: 'western', label: '🍕 Đồ Tây', value: 'western' },
+  { id: 'japanese', label: '🍣 Đồ Nhật', value: 'japanese' },
+  { id: 'dessert', label: '🍨 Tráng Miệng', value: 'dessert' },
+];
+
+export default function RestaurantSearchScreen() {
   const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
   const theme = useTheme();
+  const params = useLocalSearchParams<{ search?: string }>();
+  const userLoc = useUserLocation();
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
+  const [query, setQuery] = useState(params.search || '');
+  const [activeTag, setActiveTag] = useState(params.search || '');
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRestaurants = useCallback(
+    async (searchQuery: string, isRefresh = false) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      try {
+        const results = await searchRestaurants(searchQuery, {
+          latitude: userLoc.latitude,
+          longitude: userLoc.longitude,
+        });
+        setRestaurants(results);
+        if (results.length > 0 && selectedRestaurant) {
+          const exists = results.find((r) => r.id === selectedRestaurant.id);
+          if (!exists) setSelectedRestaurant(null);
+        }
+      } catch (err) {
+        setError('Không thể kết nối đến máy chủ. Đang hiển thị dữ liệu mẫu.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
     },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
+    [selectedRestaurant, userLoc.latitude, userLoc.longitude]
+  );
+
+  // Sync params or location if changed
+  useEffect(() => {
+    const initialQuery = params.search || '';
+    setQuery(initialQuery);
+    setActiveTag(initialQuery);
+    fetchRestaurants(initialQuery);
+  }, [params.search, fetchRestaurants]);
+
+  const handleSearch = (searchVal: string = query) => {
+    setActiveTag(searchVal);
+    fetchRestaurants(searchVal);
+  };
+
+  const handleSelectTag = (tagVal: string) => {
+    setActiveTag(tagVal);
+    setQuery(tagVal);
+    fetchRestaurants(tagVal);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    setActiveTag('');
+    fetchRestaurants('');
+  };
+
+  const bottomInset = safeAreaInsets.bottom + BottomTabInset;
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <ThemedView style={styles.screenContainer}>
+      {/* 1. MapLibre + MapTiler Embedded Interactive Map with Real GPS Location */}
+      <MapLibreMapTilerView
+        restaurants={restaurants}
+        selectedRestaurant={selectedRestaurant}
+        onSelectRestaurant={setSelectedRestaurant}
+        userLocation={{
+          latitude: userLoc.latitude,
+          longitude: userLoc.longitude,
+        }}
+      />
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+      {/* 2. Floating Top Header: Search Bar & Category Filters */}
+      <View
+        style={[
+          styles.floatingHeaderContainer,
+          {
+            paddingTop: Platform.OS === 'web' ? Spacing.three : safeAreaInsets.top + Spacing.one,
+          },
+        ]}>
+        {/* Search Bar */}
+        <View style={styles.searchBarWrapper}>
+          <View style={[styles.searchInputRow, { backgroundColor: theme.background }]}>
+            <ThemedText style={styles.searchIcon}>🔍</ThemedText>
+            <TextInput
+              style={[
+                styles.textInput,
+                {
+                  color: theme.text,
+                },
+              ]}
+              placeholder="Tìm quán ngon, món ăn, cà phê..."
+              placeholderTextColor={theme.textSecondary}
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={() => handleSearch(query)}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {query.length > 0 && Platform.OS !== 'ios' && (
+              <Pressable onPress={handleClear} style={styles.clearButton}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  ✕
+                </ThemedText>
+              </Pressable>
+            )}
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
+            <Pressable
+              onPress={() => handleSearch(query)}
+              style={({ pressed }) => [styles.searchActionBtn, pressed && styles.pressed]}>
+              <ThemedText type="smallBold" style={styles.searchActionText}>
+                Tìm
               </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+            </Pressable>
+          </View>
+        </View>
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
+        {/* Location Status Pill & Quick Filter Tag Chips Carousel */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterTagsList}>
+          {/* Real GPS Location Indicator Tag */}
+          <Pressable
+            onPress={() => userLoc.refreshLocation()}
+            style={({ pressed }) => [
+              styles.locationStatusPill,
+              userLoc.isRealLocation ? styles.locationPillGps : styles.locationPillDefault,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText style={styles.locationPillText}>
+              {userLoc.isRealLocation ? '📍 GPS: ' : '📍 '}
+              {userLoc.addressLabel.split(',')[0]}
             </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+          </Pressable>
 
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+          {FILTER_TAGS.map((tag) => {
+            const isSelected = activeTag.toLowerCase() === tag.value.toLowerCase();
+            return (
+              <Pressable
+                key={tag.id}
+                onPress={() => handleSelectTag(tag.value)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  {
+                    backgroundColor: isSelected ? '#FF5A5F' : '#FFFFFF',
+                    borderColor: isSelected ? '#FF5A5F' : '#E5E7EB',
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText
+                  type="small"
+                  style={[
+                    styles.filterChipText,
+                    { color: isSelected ? '#FFFFFF' : '#374151' },
+                    isSelected && styles.filterChipTextSelected,
+                  ]}>
+                  {tag.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+      {/* Loading Indicator Pill on Map */}
+      {loading && (
+        <View style={styles.loadingPill}>
+          <ActivityIndicator size="small" color="#FF5A5F" />
+          <ThemedText style={styles.loadingPillText}>Đang cập nhật quán gần bạn...</ThemedText>
+        </View>
+      )}
+
+      {/* 3. Draggable Bottom Sheet for Restaurant Cards with Distances */}
+      <RestaurantBottomSheet
+        restaurants={restaurants}
+        selectedRestaurant={selectedRestaurant}
+        onSelectRestaurant={setSelectedRestaurant}
+        refreshing={refreshing}
+        onRefresh={() => fetchRestaurants(query, true)}
+        bottomInset={bottomInset}
+      />
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
+  screenContainer: {
     flex: 1,
+    position: 'relative',
+    backgroundColor: '#F3F6F9',
   },
-  contentContainer: {
+  floatingHeaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 35,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  searchBarWrapper: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  searchInputRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
     alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 8,
   },
-  centerText: {
-    textAlign: 'center',
+  searchIcon: {
+    fontSize: 15,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+    outlineStyle: 'none',
+  } as any,
+  clearButton: {
+    padding: 4,
+  },
+  searchActionBtn: {
+    backgroundColor: '#FF5A5F',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  searchActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterTagsList: {
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    alignItems: 'center',
+  },
+  locationStatusPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  locationPillGps: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  locationPillDefault: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  locationPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  filterChipTextSelected: {
+    fontWeight: '700',
+  },
+  loadingPill: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 110 : 130,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 30,
+  },
+  loadingPillText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
   },
   pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+    opacity: 0.8,
   },
 });

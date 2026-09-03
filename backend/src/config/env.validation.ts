@@ -37,6 +37,10 @@ class EnvironmentVariables {
 
   @IsString()
   DB_DATABASE!: string;
+
+  @IsString()
+  @IsOptional()
+  GOOGLE_PLACES_API_KEY?: string;
 }
 
 export function validate(config: Record<string, any>) {

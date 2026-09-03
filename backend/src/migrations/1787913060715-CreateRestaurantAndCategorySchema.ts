@@ -17,11 +17,12 @@ export class CreateRestaurantAndCategorySchema1787913060715 implements Migration
             )
         `);
 
-        // Create restaurant table
+        // Create restaurant table with address column
         await queryRunner.query(`
             CREATE TABLE "restaurant" (
                 "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 "name" VARCHAR(255) NOT NULL,
+                "address" VARCHAR(255),
                 "latitude" DECIMAL(10, 8) NOT NULL,
                 "longitude" DECIMAL(11, 8) NOT NULL,
                 "price_range" VARCHAR(4) CHECK ("price_range" IN ('$', '$$', '$$$', '$$$$')),
