@@ -12,6 +12,7 @@ interface RestaurantCardProps {
   restaurant: Restaurant;
   userLocation?: { latitude: number; longitude: number };
   onPressFavorite?: (restaurant: Restaurant) => void;
+  onPressCard?: (restaurant: Restaurant) => void;
   isFavorite?: boolean;
 }
 
@@ -27,6 +28,7 @@ export function RestaurantCard({
   restaurant,
   userLocation = DEFAULT_USER_LOCATION,
   onPressFavorite,
+  onPressCard,
   isFavorite: initialFavorite = false,
 }: RestaurantCardProps) {
   const [favorite, setFavorite] = useState(initialFavorite);
@@ -58,7 +60,9 @@ export function RestaurantCard({
   };
 
   return (
-    <View style={styles.cardContainer}>
+    <Pressable
+      onPress={() => onPressCard && onPressCard(restaurant)}
+      style={({ pressed }) => [styles.cardContainer, pressed && styles.cardPressed]}>
       {/* 1. Food Image Header with Badges */}
       <View style={styles.imageWrapper}>
         <Image
@@ -176,7 +180,7 @@ export function RestaurantCard({
           </View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -193,6 +197,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 14,
     elevation: 3,
+  },
+  cardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.995 }],
   },
   imageWrapper: {
     position: 'relative',

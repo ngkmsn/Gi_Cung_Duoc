@@ -19,6 +19,8 @@ interface RestaurantBottomSheetProps {
   restaurants: Restaurant[];
   selectedRestaurant: Restaurant | null;
   onSelectRestaurant: (restaurant: Restaurant | null) => void;
+  onOpenDetail?: (restaurant: Restaurant) => void;
+  userLocation?: { latitude: number; longitude: number };
   refreshing: boolean;
   onRefresh: () => void;
   bottomInset: number;
@@ -35,6 +37,8 @@ export function RestaurantBottomSheet({
   restaurants,
   selectedRestaurant,
   onSelectRestaurant,
+  onOpenDetail,
+  userLocation,
   refreshing,
   onRefresh,
   bottomInset,
@@ -88,6 +92,13 @@ export function RestaurantBottomSheet({
     }
   };
 
+  const handleCardPress = (item: Restaurant) => {
+    onSelectRestaurant(item);
+    if (onOpenDetail) {
+      onOpenDetail(item);
+    }
+  };
+
   return (
     <Animated.View
       style={[
@@ -111,7 +122,7 @@ export function RestaurantBottomSheet({
             <ThemedText style={styles.sheetSubtitle}>
               {snapState === 'expanded'
                 ? 'Vuốt xuống để xem bản đồ rộng hơn'
-                : 'Kéo lên để xem đầy đủ danh sách'}
+                : 'Chạm quán để xem chi tiết • Kéo lên để mở rộng'}
             </ThemedText>
           </View>
 
@@ -130,15 +141,13 @@ export function RestaurantBottomSheet({
         renderItem={({ item }) => {
           const isSelected = selectedRestaurant?.id === item.id;
           return (
-            <Pressable
-              onPress={() => onSelectRestaurant(isSelected ? null : item)}
-              style={({ pressed }) => [
-                styles.cardWrapper,
-                isSelected && styles.cardWrapperSelected,
-                pressed && styles.pressed,
-              ]}>
-              <RestaurantCard restaurant={item} />
-            </Pressable>
+            <View style={[styles.cardWrapper, isSelected && styles.cardWrapperSelected]}>
+              <RestaurantCard
+                restaurant={item}
+                userLocation={userLocation}
+                onPressCard={() => handleCardPress(item)}
+              />
+            </View>
           );
         }}
         contentContainerStyle={[
@@ -246,8 +255,5 @@ const styles = StyleSheet.create({
   },
   cardWrapperSelected: {
     transform: [{ scale: 1.01 }],
-  },
-  pressed: {
-    opacity: 0.9,
   },
 });

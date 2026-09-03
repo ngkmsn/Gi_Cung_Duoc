@@ -17,6 +17,7 @@ interface MapLibreMapTilerViewProps {
   restaurants: Restaurant[];
   selectedRestaurant: Restaurant | null;
   onSelectRestaurant: (restaurant: Restaurant | null) => void;
+  onOpenDetail?: (restaurant: Restaurant) => void;
   userLocation?: { latitude: number; longitude: number };
 }
 
@@ -32,6 +33,7 @@ export function MapLibreMapTilerView({
   restaurants,
   selectedRestaurant,
   onSelectRestaurant,
+  onOpenDetail,
   userLocation = DEFAULT_USER_LOCATION,
 }: MapLibreMapTilerViewProps) {
   const webViewRef = useRef<WebView>(null);
@@ -367,13 +369,20 @@ export function MapLibreMapTilerView({
       {/* Selected Restaurant Floating Quick Preview Card with "Chỉ đường" Button */}
       {selectedRestaurant && (
         <View style={styles.floatingPreviewCard}>
-          <View style={styles.previewCardInner}>
+          <Pressable
+            onPress={() => onOpenDetail && onOpenDetail(selectedRestaurant)}
+            style={styles.previewCardInner}>
             <View style={styles.previewInfoCol}>
               <View style={styles.previewHeaderRow}>
                 <ThemedText numberOfLines={1} style={styles.previewName}>
                   {selectedRestaurant.name}
                 </ThemedText>
-                <Pressable onPress={() => onSelectRestaurant(null)} style={styles.previewCloseBtn}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onSelectRestaurant(null);
+                  }}
+                  style={styles.previewCloseBtn}>
                   <ThemedText style={styles.previewCloseText}>✕</ThemedText>
                 </Pressable>
               </View>
@@ -410,17 +419,31 @@ export function MapLibreMapTilerView({
                   )}
                 </ThemedText>
 
-                <Pressable
-                  onPress={() => handleDirections(selectedRestaurant)}
-                  style={({ pressed }) => [
-                    styles.previewDirectionsBtn,
-                    pressed && styles.previewDirectionsBtnPressed,
-                  ]}>
-                  <ThemedText style={styles.previewDirectionsText}>🧭 Chỉ đường</ThemedText>
-                </Pressable>
+                <View style={styles.previewActionsRow}>
+                  <Pressable
+                    onPress={() => onOpenDetail && onOpenDetail(selectedRestaurant)}
+                    style={({ pressed }) => [
+                      styles.previewDetailBtn,
+                      pressed && styles.previewDirectionsBtnPressed,
+                    ]}>
+                    <ThemedText style={styles.previewDetailText}>Chi tiết ➔</ThemedText>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDirections(selectedRestaurant);
+                    }}
+                    style={({ pressed }) => [
+                      styles.previewDirectionsBtn,
+                      pressed && styles.previewDirectionsBtnPressed,
+                    ]}>
+                    <ThemedText style={styles.previewDirectionsText}>🧭 Chỉ đường</ThemedText>
+                  </Pressable>
+                </View>
               </View>
             </View>
-          </View>
+          </Pressable>
         </View>
       )}
     </View>
@@ -554,6 +577,22 @@ const styles = StyleSheet.create({
   },
   previewDistanceText: {
     color: '#2563EB',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  previewActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  previewDetailBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  previewDetailText: {
+    color: '#334155',
     fontSize: 11,
     fontWeight: '700',
   },

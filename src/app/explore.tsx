@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bottom-sheet';
 import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
+import { RestaurantDetailModal } from '@/components/restaurant-detail-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
@@ -40,6 +41,7 @@ export default function RestaurantSearchScreen() {
   const [activeTag, setActiveTag] = useState(params.search || '');
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [detailModalRestaurant, setDetailModalRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +100,11 @@ export default function RestaurantSearchScreen() {
     fetchRestaurants('');
   };
 
+  const handleOpenDetail = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant);
+    setDetailModalRestaurant(restaurant);
+  };
+
   const bottomInset = safeAreaInsets.bottom + BottomTabInset;
 
   return (
@@ -107,6 +114,7 @@ export default function RestaurantSearchScreen() {
         restaurants={restaurants}
         selectedRestaurant={selectedRestaurant}
         onSelectRestaurant={setSelectedRestaurant}
+        onOpenDetail={handleOpenDetail}
         userLocation={{
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
@@ -221,9 +229,25 @@ export default function RestaurantSearchScreen() {
         restaurants={restaurants}
         selectedRestaurant={selectedRestaurant}
         onSelectRestaurant={setSelectedRestaurant}
+        onOpenDetail={handleOpenDetail}
+        userLocation={{
+          latitude: userLoc.latitude,
+          longitude: userLoc.longitude,
+        }}
         refreshing={refreshing}
         onRefresh={() => fetchRestaurants(query, true)}
         bottomInset={bottomInset}
+      />
+
+      {/* 4. Rich Restaurant Detail Modal */}
+      <RestaurantDetailModal
+        restaurant={detailModalRestaurant}
+        visible={Boolean(detailModalRestaurant)}
+        onClose={() => setDetailModalRestaurant(null)}
+        userLocation={{
+          latitude: userLoc.latitude,
+          longitude: userLoc.longitude,
+        }}
       />
     </ThemedView>
   );
