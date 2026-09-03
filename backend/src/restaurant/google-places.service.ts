@@ -41,6 +41,8 @@ export interface SearchLocationOptions {
   latitude?: number;
   longitude?: number;
   radius?: number;
+  price_range?: string;
+  open_now?: boolean;
 }
 
 const TYPE_NAME_MAP: Record<string, { name: string; slug: string; icon: string }> = {
@@ -192,6 +194,7 @@ export class GooglePlacesService {
       time_estimate: '15-25 phút',
       badge: place.rating && place.rating >= 4.8 ? 'Được Yêu Thích' : null,
       specialty_dish: categories[0]?.name ? `Món ngon ${categories[0].name}` : null,
+      is_open_now: place.regularOpeningHours?.openNow !== undefined ? place.regularOpeningHours.openNow : true,
       facilities,
       categories,
       created_at: new Date(),

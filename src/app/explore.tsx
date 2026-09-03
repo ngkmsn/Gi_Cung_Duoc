@@ -30,6 +30,14 @@ const RADIUS_OPTIONS = [
   { id: '10km', label: '📍 10 km', value: 10 },
 ];
 
+const PRICE_OPTIONS = [
+  { id: 'all', label: 'Tất cả giá', value: null },
+  { id: 'p1', label: '$ (Bình dân)', value: '$' },
+  { id: 'p2', label: '$$ (Vừa phải)', value: '$$' },
+  { id: 'p3', label: '$$$ (Sang trọng)', value: '$$$' },
+  { id: 'p4', label: '$$$$ (Cao cấp)', value: '$$$$' },
+];
+
 const FILTER_TAGS = [
   { id: 'all', label: 'Tất cả món', value: '' },
   { id: 'vietnamese', label: '🍜 Món Việt', value: 'vietnamese' },
@@ -48,6 +56,9 @@ export default function RestaurantSearchScreen() {
   const [query, setQuery] = useState(params.search || '');
   const [activeTag, setActiveTag] = useState(params.search || '');
   const [selectedRadius, setSelectedRadius] = useState<number | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<string | null>(null);
+  const [onlyOpenNow, setOnlyOpenNow] = useState<boolean>(false);
+
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [detailModalRestaurant, setDetailModalRestaurant] = useState<Restaurant | null>(null);
@@ -56,7 +67,13 @@ export default function RestaurantSearchScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchRestaurants = useCallback(
-    async (searchQuery: string, radiusVal: number | null = selectedRadius, isRefresh = false) => {
+    async (
+      searchQuery: string,
+      radiusVal: number | null = selectedRadius,
+      priceVal: string | null = selectedPrice,
+      openNowVal: boolean = onlyOpenNow,
+      isRefresh = false
+    ) => {
       if (isRefresh) {
         setRefreshing(true);
       } else {
@@ -69,6 +86,8 @@ export default function RestaurantSearchScreen() {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
           radius: radiusVal ?? undefined,
+          price_range: priceVal ?? undefined,
+          open_now: openNowVal ? true : undefined,
         });
         setRestaurants(results);
         if (results.length > 0 && selectedRestaurant) {
@@ -82,7 +101,7 @@ export default function RestaurantSearchScreen() {
         setRefreshing(false);
       }
     },
-    [selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
+    [onlyOpenNow, selectedPrice, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
   );
 
   // Sync params or location if changed
@@ -90,35 +109,62 @@ export default function RestaurantSearchScreen() {
     const initialQuery = params.search || '';
     setQuery(initialQuery);
     setActiveTag(initialQuery);
-    fetchRestaurants(initialQuery, selectedRadius);
-  }, [params.search, fetchRestaurants, selectedRadius]);
+    fetchRestaurants(initialQuery, selectedRadius, selectedPrice, onlyOpenNow);
+  }, [params.search, fetchRestaurants, selectedRadius, selectedPrice, onlyOpenNow]);
 
   const handleSearch = (searchVal: string = query) => {
     setActiveTag(searchVal);
-    fetchRestaurants(searchVal, selectedRadius);
+    fetchRestaurants(searchVal, selectedRadius, selectedPrice, onlyOpenNow);
   };
 
   const handleSelectTag = (tagVal: string) => {
     setActiveTag(tagVal);
     setQuery(tagVal);
-    fetchRestaurants(tagVal, selectedRadius);
+    fetchRestaurants(tagVal, selectedRadius, selectedPrice, onlyOpenNow);
   };
 
   const handleSelectRadius = (radiusVal: number | null) => {
     setSelectedRadius(radiusVal);
-    fetchRestaurants(query, radiusVal);
+    fetchRestaurants(query, radiusVal, selectedPrice, onlyOpenNow);
+  };
+
+  const handleSelectPrice = (priceVal: string | null) => {
+    const nextPrice = selectedPrice === priceVal ? null : priceVal;
+    setSelectedPrice(nextPrice);
+    fetchRestaurants(query, selectedRadius, nextPrice, onlyOpenNow);
+  };
+
+  const handleToggleOpenNow = () => {
+    const nextOpen = !onlyOpenNow;
+    setOnlyOpenNow(nextOpen);
+    fetchRestaurants(query, selectedRadius, selectedPrice, nextOpen);
+  };
+
+  const handleResetFilters = () => {
+    setQuery('');
+    setActiveTag('');
+    setSelectedRadius(null);
+    setSelectedPrice(null);
+    setOnlyOpenNow(false);
+    fetchRestaurants('', null, null, false);
   };
 
   const handleClear = () => {
     setQuery('');
     setActiveTag('');
-    fetchRestaurants('', selectedRadius);
+    fetchRestaurants('', selectedRadius, selectedPrice, onlyOpenNow);
   };
 
   const handleOpenDetail = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant);
     setDetailModalRestaurant(restaurant);
   };
+
+  const activeFilterCount =
+    (selectedRadius ? 1 : 0) +
+    (selectedPrice ? 1 : 0) +
+    (onlyOpenNow ? 1 : 0) +
+    (activeTag ? 1 : 0);
 
   const bottomInset = safeAreaInsets.bottom + BottomTabInset;
 
@@ -137,7 +183,7 @@ export default function RestaurantSearchScreen() {
         }}
       />
 
-      {/* 2. Floating Top Header: Search Bar & Radius + Category Filters */}
+      {/* 2. Floating Top Header: Search Bar & Multi-Filter Carousel */}
       <View
         style={[
           styles.floatingHeaderContainer,
@@ -184,7 +230,7 @@ export default function RestaurantSearchScreen() {
           </View>
         </View>
 
-        {/* Filters Carousel Row 1: Radius Selector */}
+        {/* Multi-Filter Combined Chips Carousel */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -202,6 +248,62 @@ export default function RestaurantSearchScreen() {
               {userLoc.addressLabel.split(',')[0]}
             </ThemedText>
           </Pressable>
+
+          {/* Reset All Filters Button when any filter is active */}
+          {activeFilterCount > 0 && (
+            <Pressable
+              onPress={handleResetFilters}
+              style={({ pressed }) => [styles.resetFilterBtn, pressed && styles.pressed]}>
+              <ThemedText style={styles.resetFilterText}>
+                ✕ Đặt lại ({activeFilterCount})
+              </ThemedText>
+            </Pressable>
+          )}
+
+          {/* Open/Closed Status Toggle */}
+          <Pressable
+            onPress={handleToggleOpenNow}
+            style={({ pressed }) => [
+              styles.toggleOpenBtn,
+              onlyOpenNow ? styles.toggleOpenBtnActive : styles.toggleOpenBtnInactive,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText style={styles.toggleOpenDot}>{onlyOpenNow ? '🟢' : '⚪'}</ThemedText>
+            <ThemedText
+              style={[
+                styles.toggleOpenText,
+                onlyOpenNow && styles.toggleOpenTextActive,
+              ]}>
+              Đang mở cửa
+            </ThemedText>
+          </Pressable>
+
+          <View style={styles.filterDivider} />
+
+          {/* Price Range Filter Pills */}
+          {PRICE_OPTIONS.slice(1).map((p) => {
+            const isSelected = selectedPrice === p.value;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => handleSelectPrice(p.value)}
+                style={({ pressed }) => [
+                  styles.priceChip,
+                  isSelected ? styles.priceChipSelected : styles.priceChipNormal,
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText
+                  style={[
+                    styles.priceChipText,
+                    isSelected && styles.priceChipTextSelected,
+                  ]}>
+                  {p.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+
+          <View style={styles.filterDivider} />
 
           {/* Radius Selector Pills */}
           {RADIUS_OPTIONS.map((opt) => {
@@ -262,7 +364,7 @@ export default function RestaurantSearchScreen() {
       {loading && (
         <View style={styles.loadingPill}>
           <ActivityIndicator size="small" color="#FF5A5F" />
-          <ThemedText style={styles.loadingPillText}>Đang cập nhật quán gần bạn...</ThemedText>
+          <ThemedText style={styles.loadingPillText}>Đang cập nhật quán...</ThemedText>
         </View>
       )}
 
@@ -277,7 +379,7 @@ export default function RestaurantSearchScreen() {
           longitude: userLoc.longitude,
         }}
         refreshing={refreshing}
-        onRefresh={() => fetchRestaurants(query, selectedRadius, true)}
+        onRefresh={() => fetchRestaurants(query, selectedRadius, selectedPrice, onlyOpenNow, true)}
         bottomInset={bottomInset}
       />
 
@@ -379,6 +481,81 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#1D4ED8',
+  },
+  resetFilterBtn: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  resetFilterText: {
+    color: '#DC2626',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  toggleOpenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  toggleOpenBtnActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  toggleOpenBtnInactive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  toggleOpenDot: {
+    fontSize: 10,
+  },
+  toggleOpenText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  toggleOpenTextActive: {
+    color: '#059669',
+    fontWeight: '700',
+  },
+  priceChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  priceChipNormal: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  priceChipSelected: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  priceChipText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  priceChipTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   radiusChip: {
     paddingHorizontal: 12,

@@ -39,6 +39,7 @@ export interface Restaurant {
   opening_hours?: OpeningHours | null;
   facilities?: string[];
   categories?: Category[];
+  is_open_now?: boolean;
   created_at?: string;
   updated_at?: string;
 }

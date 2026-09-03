@@ -11,6 +11,8 @@ export class RestaurantController {
     @Query('latitude') latitude?: string,
     @Query('longitude') longitude?: string,
     @Query('radius') radius?: string,
+    @Query('price_range') priceRange?: string,
+    @Query('open_now') openNow?: string,
   ) {
     const lat = latitude ? parseFloat(latitude) : undefined;
     const lng = longitude ? parseFloat(longitude) : undefined;
@@ -20,6 +22,8 @@ export class RestaurantController {
       latitude: isNaN(lat as number) ? undefined : lat,
       longitude: isNaN(lng as number) ? undefined : lng,
       radius: isNaN(rad as number) ? undefined : rad,
+      price_range: priceRange?.trim() || undefined,
+      open_now: openNow === 'true' || openNow === '1' ? true : undefined,
     });
   }
 }

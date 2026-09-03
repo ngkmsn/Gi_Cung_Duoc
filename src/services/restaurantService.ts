@@ -552,6 +552,8 @@ export interface SearchLocationParams {
   latitude?: number;
   longitude?: number;
   radius?: number; // In km (e.g., 1, 3, 5, 10) or meters
+  price_range?: string; // '$', '$$', '$$$', '$$$$'
+  open_now?: boolean;
 }
 
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -568,6 +570,34 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
   return R * c;
 }
 
+const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+
+function isRestaurantOpenNow(restaurant: Restaurant, date: Date = new Date()): boolean {
+  if (restaurant.is_open_now !== undefined) {
+    return restaurant.is_open_now;
+  }
+  if (!restaurant.opening_hours) {
+    return true;
+  }
+  const dayKey = DAY_KEYS[date.getDay()];
+  const todayHours = restaurant.opening_hours[dayKey as keyof typeof restaurant.opening_hours];
+  if (!todayHours || !todayHours.open || !todayHours.close) {
+    return true;
+  }
+  const currentMinutes = date.getHours() * 60 + date.getMinutes();
+  const [openH, openM] = todayHours.open.split(':').map(Number);
+  const [closeH, closeM] = todayHours.close.split(':').map(Number);
+  const openMinutes = (openH || 0) * 60 + (openM || 0);
+  let closeMinutes = (closeH || 0) * 60 + (closeM || 0);
+  if (closeMinutes < openMinutes) {
+    closeMinutes += 24 * 60;
+    if (currentMinutes < openMinutes) {
+      return currentMinutes + 24 * 60 <= closeMinutes;
+    }
+  }
+  return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+}
+
 export async function searchRestaurants(
   query: string = '',
   location?: SearchLocationParams
@@ -577,7 +607,7 @@ export async function searchRestaurants(
   // If mock data is explicitly enabled in config
   if (Config.MOCK_DATA) {
     // Simulate brief network delay for UX
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     let results = MOCK_RESTAURANTS;
     if (trimmedQuery) {
@@ -593,6 +623,16 @@ export async function searchRestaurants(
         );
         return matchName || matchAddress || matchSpecialty || matchCategory;
       });
+    }
+
+    // Filter by price range
+    if (location?.price_range) {
+      results = results.filter((r) => r.price_range === location.price_range);
+    }
+
+    // Filter by open now
+    if (location?.open_now) {
+      results = results.filter((r) => isRestaurantOpenNow(r));
     }
 
     if (location?.latitude && location?.longitude) {
@@ -641,6 +681,12 @@ export async function searchRestaurants(
       const radiusMeters = location.radius > 50 ? location.radius : location.radius * 1000;
       searchParams.append('radius', radiusMeters.toString());
     }
+    if (location?.price_range) {
+      searchParams.append('price_range', location.price_range);
+    }
+    if (location?.open_now) {
+      searchParams.append('open_now', 'true');
+    }
 
     const queryString = searchParams.toString();
     const url = queryString ? `${endpoint}?${queryString}` : endpoint;
@@ -676,6 +722,14 @@ export async function searchRestaurants(
         );
         return matchName || matchAddress || matchSpecialty || matchCategory;
       });
+    }
+
+    if (location?.price_range) {
+      results = results.filter((r) => r.price_range === location.price_range);
+    }
+
+    if (location?.open_now) {
+      results = results.filter((r) => isRestaurantOpenNow(r));
     }
 
     if (location?.latitude && location?.longitude && location?.radius) {

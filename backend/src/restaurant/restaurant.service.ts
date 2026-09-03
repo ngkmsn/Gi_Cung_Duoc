@@ -18,6 +18,34 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
   return R * c;
 }
 
+const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+
+function isRestaurantOpenNow(restaurant: any, date: Date = new Date()): boolean {
+  if (restaurant.is_open_now !== undefined) {
+    return restaurant.is_open_now;
+  }
+  if (!restaurant.opening_hours) {
+    return true;
+  }
+  const dayKey = DAY_KEYS[date.getDay()];
+  const todayHours = restaurant.opening_hours[dayKey];
+  if (!todayHours || !todayHours.open || !todayHours.close) {
+    return true;
+  }
+  const currentMinutes = date.getHours() * 60 + date.getMinutes();
+  const [openH, openM] = todayHours.open.split(':').map(Number);
+  const [closeH, closeM] = todayHours.close.split(':').map(Number);
+  const openMinutes = (openH || 0) * 60 + (openM || 0);
+  let closeMinutes = (closeH || 0) * 60 + (closeM || 0);
+  if (closeMinutes < openMinutes) {
+    closeMinutes += 24 * 60;
+    if (currentMinutes < openMinutes) {
+      return currentMinutes + 24 * 60 <= closeMinutes;
+    }
+  }
+  return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+}
+
 @Injectable()
 export class RestaurantService {
   private readonly logger = new Logger(RestaurantService.name);
@@ -62,8 +90,20 @@ export class RestaurantService {
   }
 
   private filterAndSortByDistance(restaurants: any[], location?: SearchLocationOptions): any[] {
+    let filtered = restaurants;
+
+    // Filter by price range
+    if (location?.price_range) {
+      filtered = filtered.filter((r) => r.price_range === location.price_range);
+    }
+
+    // Filter by open now
+    if (location?.open_now) {
+      filtered = filtered.filter((r) => isRestaurantOpenNow(r));
+    }
+
     if (!location?.latitude || !location?.longitude) {
-      return restaurants;
+      return filtered;
     }
 
     const userLat = location.latitude;
@@ -74,7 +114,6 @@ export class RestaurantService {
         : location.radius
       : undefined;
 
-    let filtered = restaurants;
     if (radiusKm) {
       filtered = filtered.filter((r) => {
         const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
