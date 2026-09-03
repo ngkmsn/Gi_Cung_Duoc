@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -10,45 +11,132 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { formatVndFull } from '@/utils/price';
+import { formatVndCurrency, formatVndFull } from '@/utils/price';
+
+export interface BudgetRange {
+  min: number;
+  max: number;
+}
 
 interface BudgetSliderModalProps {
   visible: boolean;
   onClose: () => void;
-  maxBudgetVnd: number | null;
-  onApplyBudget: (budget: number | null) => void;
+  budgetRange: BudgetRange;
+  onApplyRange: (range: BudgetRange) => void;
 }
 
-const BUDGET_PRESETS = [
-  { label: 'Không giới hạn', value: null, desc: 'Tất cả mức giá' },
-  { label: '50.000 đ', value: 50000, desc: 'Ăn sáng, bánh mì, đồ uống' },
-  { label: '100.000 đ', value: 100000, desc: 'Phở, bún chả, cơm văn phòng' },
-  { label: '150.000 đ', value: 150000, desc: 'Cà phê view đẹp, ăn trưa combo' },
-  { label: '250.000 đ', value: 250000, desc: 'Pizza, đồ Nhật, món Tây vừa' },
-  { label: '400.000 đ', value: 400000, desc: 'Buffet lẩu nướng, tụ tập bạn bè' },
-  { label: '800.000 đ', value: 800000, desc: 'Steak hảo hạng, hải sản tươi' },
-  { label: '1.500.000 đ', value: 1500000, desc: 'Fine dining, tiệc cao cấp' },
+const MAX_LIMIT = 10_000_000; // 10 triệu đồng
+
+// Smart logarithmic/multi-segment conversion between 0..1 position and 0..10,000,000 VND
+function positionToPrice(pos: number): number {
+  const p = Math.max(0, Math.min(1, pos));
+  if (p <= 0.25) {
+    // 0 -> 100,000 (step 5,000)
+    const val = (p / 0.25) * 100_000;
+    return Math.round(val / 5_000) * 5_000;
+  } else if (p <= 0.5) {
+    // 100,000 -> 500,000 (step 20,000)
+    const val = 100_000 + ((p - 0.25) / 0.25) * 400_000;
+    return Math.round(val / 20_000) * 20_000;
+  } else if (p <= 0.75) {
+    // 500,000 -> 2,000,000 (step 100,000)
+    const val = 500_000 + ((p - 0.5) / 0.25) * 1_500_000;
+    return Math.round(val / 100_000) * 100_000;
+  } else {
+    // 2,000,000 -> 10,000,000 (step 500,000)
+    const val = 2_000_000 + ((p - 0.75) / 0.25) * 8_000_000;
+    return Math.round(val / 500_000) * 500_000;
+  }
+}
+
+function priceToPosition(price: number): number {
+  const val = Math.max(0, Math.min(MAX_LIMIT, price));
+  if (val <= 100_000) {
+    return (val / 100_000) * 0.25;
+  } else if (val <= 500_000) {
+    return 0.25 + ((val - 100_000) / 400_000) * 0.25;
+  } else if (val <= 2_000_000) {
+    return 0.5 + ((val - 500_000) / 1_500_000) * 0.25;
+  } else {
+    return 0.75 + ((val - 2_000_000) / 8_000_000) * 0.25;
+  }
+}
+
+const QUICK_PRESETS: Array<{ label: string; min: number; max: number }> = [
+  { label: 'Tất cả (0 - 10tr)', min: 0, max: 10_000_000 },
+  { label: 'Ăn vặt & Sáng (0 - 50k)', min: 0, max: 50_000 },
+  { label: 'Ăn trưa & Cà phê (30k - 100k)', min: 30_000, max: 100_000 },
+  { label: 'Tụ tập & Lẩu nướng (100k - 300k)', min: 100_000, max: 300_000 },
+  { label: 'Nhà hàng sang (300k - 1tr)', min: 300_000, max: 1_000_000 },
+  { label: 'Fine Dining (1tr - 10tr)', min: 1_000_000, max: 10_000_000 },
 ];
 
 export function BudgetSliderModal({
   visible,
   onClose,
-  maxBudgetVnd,
-  onApplyBudget,
+  budgetRange,
+  onApplyRange,
 }: BudgetSliderModalProps) {
   const safeAreaInsets = useSafeAreaInsets();
-  const [selectedBudget, setSelectedBudget] = useState<number | null>(maxBudgetVnd);
+
+  const [minVal, setMinVal] = useState(budgetRange.min);
+  const [maxVal, setMaxVal] = useState(budgetRange.max);
+  const trackWidthRef = useRef<number>(300);
+
+  const minPos = priceToPosition(minVal);
+  const maxPos = priceToPosition(maxVal);
+
+  const leftThumbPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gesture) => {
+        const deltaPos = gesture.dx / trackWidthRef.current;
+        const newPos = Math.max(0, Math.min(maxPos - 0.02, minPos + deltaPos));
+        const newPrice = positionToPrice(newPos);
+        setMinVal(Math.min(newPrice, maxVal));
+      },
+    })
+  ).current;
+
+  const rightThumbPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gesture) => {
+        const deltaPos = gesture.dx / trackWidthRef.current;
+        const newPos = Math.max(minPos + 0.02, Math.min(1, maxPos + deltaPos));
+        const newPrice = positionToPrice(newPos);
+        setMaxVal(Math.max(minVal, newPrice));
+      },
+    })
+  ).current;
 
   const handleApply = () => {
-    onApplyBudget(selectedBudget);
+    onApplyRange({ min: minVal, max: maxVal });
     onClose();
   };
 
-  const handleClear = () => {
-    setSelectedBudget(null);
-    onApplyBudget(null);
+  const handleReset = () => {
+    setMinVal(0);
+    setMaxVal(MAX_LIMIT);
+    onApplyRange({ min: 0, max: MAX_LIMIT });
     onClose();
+  };
+
+  const handleTrackClick = (e: any) => {
+    const clickX = e.nativeEvent.locationX;
+    const clickPos = clickX / trackWidthRef.current;
+    const clickedPrice = positionToPrice(clickPos);
+
+    // If closer to min thumb, move min, else move max
+    const distToMin = Math.abs(clickPos - minPos);
+    const distToMax = Math.abs(clickPos - maxPos);
+    if (distToMin < distToMax) {
+      setMinVal(Math.min(clickedPrice, maxVal));
+    } else {
+      setMaxVal(Math.max(minVal, clickedPrice));
+    }
   };
 
   return (
@@ -73,9 +161,9 @@ export function BudgetSliderModal({
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.headerTextCol}>
-              <ThemedText style={styles.modalTitle}>Chọn Ngân Sách Của Bạn 💰</ThemedText>
+              <ThemedText style={styles.modalTitle}>Thanh Trượt Ngân Sách 🎚️</ThemedText>
               <ThemedText style={styles.modalSubtitle}>
-                Chỉ hiển thị các quán ăn có mức giá phù hợp với túi tiền
+                Kéo 2 đầu thanh trượt để chọn khoảng giá từ 0 đ đến 10 triệu đ
               </ThemedText>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn}>
@@ -83,70 +171,159 @@ export function BudgetSliderModal({
             </Pressable>
           </View>
 
-          {/* Current Selection Highlight Card */}
-          <View style={styles.highlightCard}>
-            <ThemedText style={styles.highlightLabel}>Ngân sách tối đa mỗi người:</ThemedText>
-            <ThemedText style={styles.highlightValue}>
-              {selectedBudget ? formatVndFull(selectedBudget) : 'Không giới hạn'}
-            </ThemedText>
+          {/* Live Price Range Visual Banner */}
+          <View style={styles.priceBannerCard}>
+            <View style={styles.priceBox}>
+              <ThemedText style={styles.priceBoxLabel}>TỪ (TỐI THIỂU)</ThemedText>
+              <ThemedText style={styles.priceBoxValue}>{formatVndFull(minVal)}</ThemedText>
+            </View>
+
+            <View style={styles.priceArrowWrapper}>
+              <ThemedText style={styles.priceArrowText}>➔</ThemedText>
+            </View>
+
+            <View style={styles.priceBox}>
+              <ThemedText style={styles.priceBoxLabel}>ĐẾN (TỐI ĐA)</ThemedText>
+              <ThemedText style={styles.priceBoxValue}>
+                {maxVal >= MAX_LIMIT ? '10 triệu đ+' : formatVndFull(maxVal)}
+              </ThemedText>
+            </View>
           </View>
 
-          {/* Presets List */}
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.presetsList}>
-            {BUDGET_PRESETS.map((item, index) => {
-              const isSelected = selectedBudget === item.value;
-              return (
-                <Pressable
-                  key={index}
-                  onPress={() => setSelectedBudget(item.value)}
-                  style={({ pressed }) => [
-                    styles.presetRowItem,
-                    isSelected && styles.presetRowItemSelected,
-                    pressed && styles.pressed,
+            contentContainerStyle={styles.bodyScroll}>
+            {/* Interactive Dual-Thumb Slider */}
+            <View style={styles.sliderContainer}>
+              <ThemedText style={styles.sliderInstruction}>
+                🔘 Kéo điểm tròn trái (Giá thấp nhất) • Điểm tròn phải (Giá cao nhất)
+              </ThemedText>
+
+              <View
+                style={styles.trackContainer}
+                onLayout={(e) => {
+                  trackWidthRef.current = Math.max(100, e.nativeEvent.layout.width);
+                }}>
+                <Pressable onPress={handleTrackClick} style={styles.trackBackground} />
+
+                {/* Active Highlight Range Bar */}
+                <View
+                  style={[
+                    styles.trackActive,
+                    {
+                      left: `${minPos * 100}%`,
+                      width: `${Math.max(0, (maxPos - minPos) * 100)}%`,
+                    },
+                  ]}
+                />
+
+                {/* Left Thumb (Min Price) */}
+                <View
+                  {...leftThumbPan.panHandlers}
+                  style={[
+                    styles.thumb,
+                    {
+                      left: `${minPos * 100}%`,
+                      marginLeft: -16,
+                    },
                   ]}>
-                  <View style={styles.radioCircle}>
-                    {isSelected && <View style={styles.radioInnerDot} />}
-                  </View>
+                  <View style={styles.thumbInnerCircle} />
+                </View>
 
-                  <View style={styles.presetTextCol}>
-                    <ThemedText
-                      style={[
-                        styles.presetLabelText,
-                        isSelected && styles.presetLabelTextSelected,
+                {/* Right Thumb (Max Price) */}
+                <View
+                  {...rightThumbPan.panHandlers}
+                  style={[
+                    styles.thumb,
+                    {
+                      left: `${maxPos * 100}%`,
+                      marginLeft: -16,
+                    },
+                  ]}>
+                  <View style={styles.thumbInnerCircle} />
+                </View>
+              </View>
+
+              {/* Slider Scale Ticks Labels */}
+              <View style={styles.ticksRow}>
+                <ThemedText style={styles.tickText}>0 đ</ThemedText>
+                <ThemedText style={styles.tickText}>100k</ThemedText>
+                <ThemedText style={styles.tickText}>500k</ThemedText>
+                <ThemedText style={styles.tickText}>2tr</ThemedText>
+                <ThemedText style={styles.tickText}>10tr đ</ThemedText>
+              </View>
+            </View>
+
+            {/* Quick Adjust Buttons */}
+            <View style={styles.stepperActionsRow}>
+              <Pressable
+                onPress={() => setMinVal(Math.max(0, minVal - 20_000))}
+                style={styles.stepBtn}>
+                <ThemedText style={styles.stepBtnText}>- Min 20k</ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => setMinVal(Math.min(maxVal - 10_000, minVal + 20_000))}
+                style={styles.stepBtn}>
+                <ThemedText style={styles.stepBtnText}>+ Min 20k</ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => setMaxVal(Math.max(minVal + 10_000, maxVal - 50_000))}
+                style={styles.stepBtn}>
+                <ThemedText style={styles.stepBtnText}>- Max 50k</ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => setMaxVal(Math.min(MAX_LIMIT, maxVal + 50_000))}
+                style={styles.stepBtn}>
+                <ThemedText style={styles.stepBtnText}>+ Max 50k</ThemedText>
+              </Pressable>
+            </View>
+
+            {/* Quick Presets Grid */}
+            <View style={styles.presetsSection}>
+              <ThemedText style={styles.sectionHeader}>Khoảng giá chọn nhanh ⚡</ThemedText>
+              <View style={styles.presetsGrid}>
+                {QUICK_PRESETS.map((p, idx) => {
+                  const isSelected = minVal === p.min && maxVal === p.max;
+                  return (
+                    <Pressable
+                      key={idx}
+                      onPress={() => {
+                        setMinVal(p.min);
+                        setMaxVal(p.max);
+                      }}
+                      style={({ pressed }) => [
+                        styles.presetChip,
+                        isSelected && styles.presetChipActive,
+                        pressed && styles.pressed,
                       ]}>
-                      {item.label}
-                    </ThemedText>
-                    <ThemedText style={styles.presetDescText}>{item.desc}</ThemedText>
-                  </View>
-
-                  {item.value && (
-                    <View style={styles.budgetTag}>
-                      <ThemedText style={styles.budgetTagText}>
-                        &le; {Math.round(item.value / 1000)}k
+                      <ThemedText
+                        style={[
+                          styles.presetChipText,
+                          isSelected && styles.presetChipTextActive,
+                        ]}>
+                        {p.label}
                       </ThemedText>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           </ScrollView>
 
           {/* Footer Actions */}
           <View style={styles.footerRow}>
-            {selectedBudget !== null && (
-              <Pressable
-                onPress={handleClear}
-                style={({ pressed }) => [styles.clearBtn, pressed && styles.pressed]}>
-                <ThemedText style={styles.clearBtnText}>Bỏ lọc</ThemedText>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={handleReset}
+              style={({ pressed }) => [styles.resetBtn, pressed && styles.pressed]}>
+              <ThemedText style={styles.resetBtnText}>Mặc định (0 - 10tr)</ThemedText>
+            </Pressable>
 
             <Pressable
               onPress={handleApply}
               style={({ pressed }) => [styles.applyBtn, pressed && styles.pressed]}>
-              <ThemedText style={styles.applyBtnText}>Áp dụng ngân sách</ThemedText>
+              <ThemedText style={styles.applyBtnText}>
+                Áp dụng ({formatVndCurrency(minVal)} - {formatVndCurrency(maxVal)})
+              </ThemedText>
             </Pressable>
           </View>
         </View>
@@ -168,7 +345,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '85%',
+    maxHeight: '90%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.15,
@@ -219,87 +396,164 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '700',
   },
-  highlightCard: {
-    marginHorizontal: 20,
-    backgroundColor: '#ECFDF5',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-  },
-  highlightLabel: {
-    fontSize: 12,
-    color: '#047857',
-    fontWeight: '600',
-  },
-  highlightValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#065F46',
-  },
-  presetsList: {
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    gap: 8,
-  },
-  presetRowItem: {
+  priceBannerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#F1F5F9',
-    backgroundColor: '#F8FAFC',
-    gap: 12,
-  },
-  presetRowItemSelected: {
-    borderColor: '#10B981',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
     backgroundColor: '#F0FDF4',
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#BBF7D0',
+    marginBottom: 14,
   },
-  radioCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#94A3B8',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInnerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981',
-  },
-  presetTextCol: {
+  priceBox: {
     flex: 1,
-    gap: 2,
+    alignItems: 'center',
+    gap: 3,
   },
-  presetLabelText: {
-    fontSize: 15,
+  priceBoxLabel: {
+    fontSize: 10,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#15803D',
+    letterSpacing: 0.5,
   },
-  presetLabelTextSelected: {
-    color: '#065F46',
+  priceBoxValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#166534',
   },
-  presetDescText: {
+  priceArrowWrapper: {
+    paddingHorizontal: 8,
+  },
+  priceArrowText: {
+    fontSize: 16,
+    color: '#16A34A',
+    fontWeight: '700',
+  },
+  bodyScroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 16,
+  },
+  sliderContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 14,
+  },
+  sliderInstruction: {
     fontSize: 11,
     color: '#64748B',
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  budgetTag: {
+  trackContainer: {
+    position: 'relative',
+    height: 40,
+    justifyContent: 'center',
+    marginHorizontal: 16,
+  },
+  trackBackground: {
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#E2E8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    width: '100%',
   },
-  budgetTagText: {
+  trackActive: {
+    position: 'absolute',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  thumb: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 5,
+    cursor: Platform.OS === 'web' ? 'ew-resize' : 'auto',
+  } as any,
+  thumbInnerCircle: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  ticksRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  tickText: {
     fontSize: 11,
-    fontWeight: '700',
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  stepperActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  stepBtn: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  stepBtnText: {
+    fontSize: 11,
     color: '#334155',
+    fontWeight: '700',
+  },
+  presetsSection: {
+    gap: 10,
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  presetsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  presetChipActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  presetChipText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  presetChipTextActive: {
+    color: '#059669',
+    fontWeight: '700',
   },
   footerRow: {
     flexDirection: 'row',
@@ -310,17 +564,17 @@ const styles = StyleSheet.create({
     borderTopColor: '#F1F5F9',
     backgroundColor: '#FFFFFF',
   },
-  clearBtn: {
-    paddingHorizontal: 16,
+  resetBtn: {
+    paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  clearBtnText: {
+  resetBtnText: {
     color: '#64748B',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   applyBtn: {
@@ -338,7 +592,7 @@ const styles = StyleSheet.create({
   },
   applyBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   pressed: {

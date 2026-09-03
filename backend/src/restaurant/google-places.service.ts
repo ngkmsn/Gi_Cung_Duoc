@@ -41,6 +41,7 @@ export interface SearchLocationOptions {
   latitude?: number;
   longitude?: number;
   radius?: number;
+  min_budget?: number;
   max_budget?: number;
   price_range?: string;
   open_now?: boolean;

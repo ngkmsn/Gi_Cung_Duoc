@@ -592,7 +592,8 @@ export interface SearchLocationParams {
   latitude?: number;
   longitude?: number;
   radius?: number; // In km (e.g., 1, 3, 5, 10) or meters
-  max_budget?: number; // In VNĐ (e.g. 100000, 150000)
+  min_budget?: number; // In VNĐ
+  max_budget?: number; // In VNĐ
   price_range?: string; // Fallback
   open_now?: boolean;
 }
@@ -666,18 +667,14 @@ export async function searchRestaurants(
       });
     }
 
-    // Filter by max budget in VNĐ
-    if (location?.max_budget && location.max_budget > 0) {
-      const budget = location.max_budget;
+    // Filter by budget range (min_budget and max_budget) in VNĐ
+    if (location?.min_budget !== undefined || location?.max_budget !== undefined) {
+      const budgetMin = location.min_budget ?? 0;
+      const budgetMax = location.max_budget ?? 10_000_000;
       results = results.filter((r) => {
-        if (r.min_price !== undefined && r.min_price !== null) {
-          return r.min_price <= budget;
-        }
-        // Fallback for rough ranges
-        if (r.price_range === '$') return 50000 <= budget;
-        if (r.price_range === '$$') return 100000 <= budget;
-        if (r.price_range === '$$$') return 250000 <= budget;
-        return true;
+        const minPrice = r.min_price ?? 30000;
+        const maxPrice = r.max_price ?? minPrice;
+        return maxPrice >= budgetMin && minPrice <= budgetMax;
       });
     } else if (location?.price_range) {
       results = results.filter((r) => r.price_range === location.price_range);
@@ -734,7 +731,10 @@ export async function searchRestaurants(
       const radiusMeters = location.radius > 50 ? location.radius : location.radius * 1000;
       searchParams.append('radius', radiusMeters.toString());
     }
-    if (location?.max_budget) {
+    if (location?.min_budget !== undefined) {
+      searchParams.append('min_budget', location.min_budget.toString());
+    }
+    if (location?.max_budget !== undefined) {
       searchParams.append('max_budget', location.max_budget.toString());
     }
     if (location?.price_range) {
@@ -780,9 +780,14 @@ export async function searchRestaurants(
       });
     }
 
-    if (location?.max_budget && location.max_budget > 0) {
-      const budget = location.max_budget;
-      results = results.filter((r) => (r.min_price ? r.min_price <= budget : true));
+    if (location?.min_budget !== undefined || location?.max_budget !== undefined) {
+      const budgetMin = location.min_budget ?? 0;
+      const budgetMax = location.max_budget ?? 10_000_000;
+      results = results.filter((r) => {
+        const minPrice = r.min_price ?? 30000;
+        const maxPrice = r.max_price ?? minPrice;
+        return maxPrice >= budgetMin && minPrice <= budgetMax;
+      });
     } else if (location?.price_range) {
       results = results.filter((r) => r.price_range === location.price_range);
     }

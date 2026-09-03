@@ -12,7 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bottom-sheet';
-import { BudgetSliderModal } from '@/components/budget-slider-modal';
+import { BudgetRange, BudgetSliderModal } from '@/components/budget-slider-modal';
 import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
 import { RestaurantDetailModal } from '@/components/restaurant-detail-modal';
 import { ThemedText } from '@/components/themed-text';
@@ -23,6 +23,8 @@ import { useUserLocation } from '@/hooks/use-user-location';
 import { searchRestaurants } from '@/services/restaurantService';
 import { Restaurant } from '@/types/restaurant';
 import { formatVndCurrency } from '@/utils/price';
+
+const MAX_BUDGET_LIMIT = 10_000_000;
 
 const RADIUS_OPTIONS = [
   { id: 'all', label: '🎯 Tất cả', value: null },
@@ -50,7 +52,7 @@ export default function RestaurantSearchScreen() {
   const [query, setQuery] = useState(params.search || '');
   const [activeTag, setActiveTag] = useState(params.search || '');
   const [selectedRadius, setSelectedRadius] = useState<number | null>(null);
-  const [maxBudget, setMaxBudget] = useState<number | null>(null);
+  const [budgetRange, setBudgetRange] = useState<BudgetRange>({ min: 0, max: MAX_BUDGET_LIMIT });
   const [isBudgetModalVisible, setIsBudgetModalVisible] = useState(false);
   const [onlyOpenNow, setOnlyOpenNow] = useState<boolean>(false);
 
@@ -61,11 +63,13 @@ export default function RestaurantSearchScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isBudgetFiltered = budgetRange.min > 0 || budgetRange.max < MAX_BUDGET_LIMIT;
+
   const fetchRestaurants = useCallback(
     async (
       searchQuery: string,
       radiusVal: number | null = selectedRadius,
-      budgetVal: number | null = maxBudget,
+      rangeVal: BudgetRange = budgetRange,
       openNowVal: boolean = onlyOpenNow,
       isRefresh = false
     ) => {
@@ -76,12 +80,15 @@ export default function RestaurantSearchScreen() {
       }
       setError(null);
 
+      const hasBudgetFilter = rangeVal.min > 0 || rangeVal.max < MAX_BUDGET_LIMIT;
+
       try {
         const results = await searchRestaurants(searchQuery, {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
           radius: radiusVal ?? undefined,
-          max_budget: budgetVal ?? undefined,
+          min_budget: hasBudgetFilter ? rangeVal.min : undefined,
+          max_budget: hasBudgetFilter ? rangeVal.max : undefined,
           open_now: openNowVal ? true : undefined,
         });
         setRestaurants(results);
@@ -96,7 +103,7 @@ export default function RestaurantSearchScreen() {
         setRefreshing(false);
       }
     },
-    [maxBudget, onlyOpenNow, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
+    [budgetRange, onlyOpenNow, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
   );
 
   // Sync params or location if changed
@@ -104,49 +111,49 @@ export default function RestaurantSearchScreen() {
     const initialQuery = params.search || '';
     setQuery(initialQuery);
     setActiveTag(initialQuery);
-    fetchRestaurants(initialQuery, selectedRadius, maxBudget, onlyOpenNow);
-  }, [params.search, fetchRestaurants, selectedRadius, maxBudget, onlyOpenNow]);
+    fetchRestaurants(initialQuery, selectedRadius, budgetRange, onlyOpenNow);
+  }, [params.search, fetchRestaurants, selectedRadius, budgetRange, onlyOpenNow]);
 
   const handleSearch = (searchVal: string = query) => {
     setActiveTag(searchVal);
-    fetchRestaurants(searchVal, selectedRadius, maxBudget, onlyOpenNow);
+    fetchRestaurants(searchVal, selectedRadius, budgetRange, onlyOpenNow);
   };
 
   const handleSelectTag = (tagVal: string) => {
     setActiveTag(tagVal);
     setQuery(tagVal);
-    fetchRestaurants(tagVal, selectedRadius, maxBudget, onlyOpenNow);
+    fetchRestaurants(tagVal, selectedRadius, budgetRange, onlyOpenNow);
   };
 
   const handleSelectRadius = (radiusVal: number | null) => {
     setSelectedRadius(radiusVal);
-    fetchRestaurants(query, radiusVal, maxBudget, onlyOpenNow);
+    fetchRestaurants(query, radiusVal, budgetRange, onlyOpenNow);
   };
 
-  const handleApplyBudget = (budgetVal: number | null) => {
-    setMaxBudget(budgetVal);
-    fetchRestaurants(query, selectedRadius, budgetVal, onlyOpenNow);
+  const handleApplyBudgetRange = (range: BudgetRange) => {
+    setBudgetRange(range);
+    fetchRestaurants(query, selectedRadius, range, onlyOpenNow);
   };
 
   const handleToggleOpenNow = () => {
     const nextOpen = !onlyOpenNow;
     setOnlyOpenNow(nextOpen);
-    fetchRestaurants(query, selectedRadius, maxBudget, nextOpen);
+    fetchRestaurants(query, selectedRadius, budgetRange, nextOpen);
   };
 
   const handleResetFilters = () => {
     setQuery('');
     setActiveTag('');
     setSelectedRadius(null);
-    setMaxBudget(null);
+    setBudgetRange({ min: 0, max: MAX_BUDGET_LIMIT });
     setOnlyOpenNow(false);
-    fetchRestaurants('', null, null, false);
+    fetchRestaurants('', null, { min: 0, max: MAX_BUDGET_LIMIT }, false);
   };
 
   const handleClear = () => {
     setQuery('');
     setActiveTag('');
-    fetchRestaurants('', selectedRadius, maxBudget, onlyOpenNow);
+    fetchRestaurants('', selectedRadius, budgetRange, onlyOpenNow);
   };
 
   const handleOpenDetail = (restaurant: Restaurant) => {
@@ -156,7 +163,7 @@ export default function RestaurantSearchScreen() {
 
   const activeFilterCount =
     (selectedRadius ? 1 : 0) +
-    (maxBudget ? 1 : 0) +
+    (isBudgetFiltered ? 1 : 0) +
     (onlyOpenNow ? 1 : 0) +
     (activeTag ? 1 : 0);
 
@@ -254,21 +261,25 @@ export default function RestaurantSearchScreen() {
             </Pressable>
           )}
 
-          {/* Budget Filter Pill in VNĐ */}
+          {/* Budget Range Slider Trigger Pill */}
           <Pressable
             onPress={() => setIsBudgetModalVisible(true)}
             style={({ pressed }) => [
               styles.budgetFilterChip,
-              maxBudget !== null ? styles.budgetFilterChipActive : styles.budgetFilterChipInactive,
+              isBudgetFiltered ? styles.budgetFilterChipActive : styles.budgetFilterChipInactive,
               pressed && styles.pressed,
             ]}>
-            <ThemedText style={styles.budgetChipIcon}>💰</ThemedText>
+            <ThemedText style={styles.budgetChipIcon}>🎚️</ThemedText>
             <ThemedText
               style={[
                 styles.budgetChipText,
-                maxBudget !== null && styles.budgetChipTextActive,
+                isBudgetFiltered && styles.budgetChipTextActive,
               ]}>
-              {maxBudget !== null ? `Ngân sách ≤ ${formatVndCurrency(maxBudget)}` : 'Ngân sách (VNĐ) ▾'}
+              {isBudgetFiltered
+                ? `Giá: ${formatVndCurrency(budgetRange.min)} - ${
+                    budgetRange.max >= MAX_BUDGET_LIMIT ? '10tr+' : formatVndCurrency(budgetRange.max)
+                  }`
+                : 'Ngân sách (0 - 10tr) ▾'}
             </ThemedText>
           </Pressable>
 
@@ -366,16 +377,16 @@ export default function RestaurantSearchScreen() {
           longitude: userLoc.longitude,
         }}
         refreshing={refreshing}
-        onRefresh={() => fetchRestaurants(query, selectedRadius, maxBudget, onlyOpenNow, true)}
+        onRefresh={() => fetchRestaurants(query, selectedRadius, budgetRange, onlyOpenNow, true)}
         bottomInset={bottomInset}
       />
 
-      {/* 4. Interactive VNĐ Budget Selection Modal */}
+      {/* 4. Interactive Range Slider Modal (0 - 10.000.000 VNĐ) */}
       <BudgetSliderModal
         visible={isBudgetModalVisible}
         onClose={() => setIsBudgetModalVisible(false)}
-        maxBudgetVnd={maxBudget}
-        onApplyBudget={handleApplyBudget}
+        budgetRange={budgetRange}
+        onApplyRange={handleApplyBudgetRange}
       />
 
       {/* 5. Rich Restaurant Detail Modal */}
