@@ -44,8 +44,8 @@ describe('RestaurantController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('should return restaurants matching search query with optional coordinates, budget range, price and open status', async () => {
-    const result = await controller.search('Pho Thin', '21.0285', '105.8542', '3000', '30000', '150000', '$$', 'true');
+  it('should return restaurants matching search query with optional coordinates, budget range, price, category and open status', async () => {
+    const result = await controller.search('Pho Thin', '21.0285', '105.8542', '3000', '30000', '150000', '$$', 'vietnamese', 'true');
     expect(service.search).toHaveBeenCalledWith('Pho Thin', {
       latitude: 21.0285,
       longitude: 105.8542,
@@ -53,6 +53,7 @@ describe('RestaurantController', () => {
       min_budget: 30000,
       max_budget: 150000,
       price_range: '$$',
+      category: 'vietnamese',
       open_now: true,
     });
     expect(result).toEqual([mockRestaurant]);
@@ -67,6 +68,7 @@ describe('RestaurantController', () => {
       min_budget: undefined,
       max_budget: undefined,
       price_range: undefined,
+      category: undefined,
       open_now: undefined,
     });
   });

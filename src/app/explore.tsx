@@ -12,7 +12,13 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bottom-sheet';
-import { BudgetRange, BudgetSliderModal } from '@/components/budget-slider-modal';
+import {
+  CATEGORY_OPTIONS,
+  MAX_BUDGET_LIMIT,
+  RADIUS_OPTIONS,
+  UnifiedFilterModal,
+  UnifiedFilterState,
+} from '@/components/filter/unified-filter-modal';
 import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
 import { RestaurantDetailModal } from '@/components/restaurant-detail-modal';
 import { SearchHistoryDropdown } from '@/components/search/search-history-dropdown';
@@ -32,25 +38,6 @@ import {
 import { Restaurant } from '@/types/restaurant';
 import { formatVndCurrency } from '@/utils/price';
 
-const MAX_BUDGET_LIMIT = 10_000_000;
-
-const RADIUS_OPTIONS = [
-  { id: 'all', label: '🎯 Tất cả', value: null },
-  { id: '1km', label: '📍 1 km', value: 1 },
-  { id: '3km', label: '📍 3 km', value: 3 },
-  { id: '5km', label: '📍 5 km', value: 5 },
-  { id: '10km', label: '📍 10 km', value: 10 },
-];
-
-const FILTER_TAGS = [
-  { id: 'all', label: 'Tất cả món', value: '' },
-  { id: 'vietnamese', label: '🍜 Món Việt', value: 'vietnamese' },
-  { id: 'coffee', label: '☕ Cà Phê', value: 'coffee' },
-  { id: 'western', label: '🍕 Đồ Tây', value: 'western' },
-  { id: 'japanese', label: '🍣 Đồ Nhật', value: 'japanese' },
-  { id: 'dessert', label: '🍨 Tráng Miệng', value: 'dessert' },
-];
-
 export default function RestaurantSearchScreen() {
   const safeAreaInsets = useSafeAreaInsets();
   const theme = useTheme();
@@ -58,11 +45,13 @@ export default function RestaurantSearchScreen() {
   const userLoc = useUserLocation();
 
   const [query, setQuery] = useState(params.search || '');
-  const [activeTag, setActiveTag] = useState(params.search || '');
-  const [selectedRadius, setSelectedRadius] = useState<number | null>(null);
-  const [budgetRange, setBudgetRange] = useState<BudgetRange>({ min: 0, max: MAX_BUDGET_LIMIT });
-  const [isBudgetModalVisible, setIsBudgetModalVisible] = useState(false);
-  const [onlyOpenNow, setOnlyOpenNow] = useState<boolean>(false);
+  const [filters, setFilters] = useState<UnifiedFilterState>({
+    budgetRange: { min: 0, max: MAX_BUDGET_LIMIT },
+    radius: null,
+    category: params.search || '',
+    openNow: false,
+  });
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -75,17 +64,50 @@ export default function RestaurantSearchScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const debounceTimerRef = useRef<any>(null);
+  const filtersRef = useRef<UnifiedFilterState>(filters);
+  filtersRef.current = filters;
+  const selectedRestaurantRef = useRef<Restaurant | null>(selectedRestaurant);
+  selectedRestaurantRef.current = selectedRestaurant;
 
-  const isBudgetFiltered = budgetRange.min > 0 || budgetRange.max < MAX_BUDGET_LIMIT;
+  const isBudgetFiltered =
+    filters.budgetRange.min > 0 || filters.budgetRange.max < MAX_BUDGET_LIMIT;
+  const isRadiusFiltered = filters.radius !== null && filters.radius > 0;
+  const isCategoryFiltered = Boolean(filters.category && filters.category.trim().length > 0);
+  const isOpenNowFiltered = filters.openNow === true;
+  const isQueryFiltered = Boolean(query.trim().length > 0);
+
+  const activeFilterCount =
+    (isBudgetFiltered ? 1 : 0) +
+    (isRadiusFiltered ? 1 : 0) +
+    (isCategoryFiltered ? 1 : 0) +
+    (isOpenNowFiltered ? 1 : 0);
+
+  const hasActiveSearchOrFilter = isQueryFiltered || activeFilterCount > 0;
 
   const fetchRestaurants = useCallback(
     async (
       searchQuery: string,
-      radiusVal: number | null = selectedRadius,
-      rangeVal: BudgetRange = budgetRange,
-      openNowVal: boolean = onlyOpenNow,
+      filterState: UnifiedFilterState = filtersRef.current,
       isRefresh = false
     ) => {
+      const isBudget =
+        filterState.budgetRange.min > 0 || filterState.budgetRange.max < MAX_BUDGET_LIMIT;
+      const isRad = filterState.radius !== null && filterState.radius > 0;
+      const isCat = Boolean(filterState.category && filterState.category.trim().length > 0);
+      const isOpen = filterState.openNow === true;
+      const isQ = Boolean(searchQuery.trim().length > 0);
+
+      const hasActive = isQ || isCat || isRad || isOpen || isBudget;
+
+      // When no search query or filter is active, do NOT fetch 3,000 restaurants
+      if (!hasActive) {
+        setRestaurants([]);
+        setLoading(false);
+        setRefreshing(false);
+        setError(null);
+        return;
+      }
+
       if (isRefresh) {
         setRefreshing(true);
       } else {
@@ -93,30 +115,30 @@ export default function RestaurantSearchScreen() {
       }
       setError(null);
 
-      const hasBudgetFilter = rangeVal.min > 0 || rangeVal.max < MAX_BUDGET_LIMIT;
-
       try {
         const results = await searchRestaurants(searchQuery, {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
-          radius: radiusVal ?? undefined,
-          min_budget: hasBudgetFilter ? rangeVal.min : undefined,
-          max_budget: hasBudgetFilter ? rangeVal.max : undefined,
-          open_now: openNowVal ? true : undefined,
+          radius: filterState.radius ?? undefined,
+          min_budget: isBudget ? filterState.budgetRange.min : undefined,
+          max_budget: isBudget ? filterState.budgetRange.max : undefined,
+          category: filterState.category ? filterState.category : undefined,
+          open_now: filterState.openNow ? true : undefined,
+          limit: 50,
         });
         setRestaurants(results);
-        if (results.length > 0 && selectedRestaurant) {
-          const exists = results.find((r) => r.id === selectedRestaurant.id);
+        if (results.length > 0 && selectedRestaurantRef.current) {
+          const exists = results.find((r) => r.id === selectedRestaurantRef.current?.id);
           if (!exists) setSelectedRestaurant(null);
         }
       } catch (err) {
-        setError('Không thể kết nối đến máy chủ. Đang hiển thị dữ liệu mẫu.');
+        setError('Không thể kết nối đến máy chủ.');
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [budgetRange, onlyOpenNow, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
+    [userLoc.latitude, userLoc.longitude]
   );
 
   // Load search history on component mount
@@ -124,24 +146,27 @@ export default function RestaurantSearchScreen() {
     getSearchHistory().then(setSearchHistory);
   }, []);
 
-  // Sync params or location if changed
+  // Sync params on initial mount or route param change
   useEffect(() => {
     const initialQuery = params.search || '';
     setQuery(initialQuery);
-    setActiveTag(initialQuery);
-    fetchRestaurants(initialQuery, selectedRadius, budgetRange, onlyOpenNow);
-  }, [params.search, fetchRestaurants, selectedRadius, budgetRange, onlyOpenNow]);
+    const nextFilters: UnifiedFilterState = {
+      ...filtersRef.current,
+      category: initialQuery,
+    };
+    setFilters(nextFilters);
+    fetchRestaurants(initialQuery, nextFilters);
+  }, [params.search, fetchRestaurants]);
 
   const handleQueryChange = (text: string) => {
     setQuery(text);
-    setActiveTag(text);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      fetchRestaurants(text, selectedRadius, budgetRange, onlyOpenNow);
+      fetchRestaurants(text, filtersRef.current);
     }, 280);
   };
 
@@ -153,16 +178,14 @@ export default function RestaurantSearchScreen() {
     if (searchVal.trim()) {
       saveSearchQuery(searchVal.trim()).then(setSearchHistory);
     }
-    setActiveTag(searchVal);
-    fetchRestaurants(searchVal, selectedRadius, budgetRange, onlyOpenNow);
+    fetchRestaurants(searchVal, filtersRef.current);
   };
 
   const handleSelectHistoryItem = (selectedQuery: string) => {
     setIsSearchFocused(false);
     setQuery(selectedQuery);
-    setActiveTag(selectedQuery);
     saveSearchQuery(selectedQuery).then(setSearchHistory);
-    fetchRestaurants(selectedQuery, selectedRadius, budgetRange, onlyOpenNow);
+    fetchRestaurants(selectedQuery, filtersRef.current);
   };
 
   const handleRemoveHistoryItem = (id: string) => {
@@ -173,45 +196,23 @@ export default function RestaurantSearchScreen() {
     clearAllSearchHistory().then(() => setSearchHistory([]));
   };
 
-  const handleSelectTag = (tagVal: string) => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    setIsSearchFocused(false);
-    if (tagVal.trim()) {
-      saveSearchQuery(tagVal.trim()).then(setSearchHistory);
-    }
-    setActiveTag(tagVal);
-    setQuery(tagVal);
-    fetchRestaurants(tagVal, selectedRadius, budgetRange, onlyOpenNow);
-  };
-
-  const handleSelectRadius = (radiusVal: number | null) => {
-    setSelectedRadius(radiusVal);
-    fetchRestaurants(query, radiusVal, budgetRange, onlyOpenNow);
-  };
-
-  const handleApplyBudgetRange = (range: BudgetRange) => {
-    setBudgetRange(range);
-    fetchRestaurants(query, selectedRadius, range, onlyOpenNow);
-  };
-
-  const handleToggleOpenNow = () => {
-    const nextOpen = !onlyOpenNow;
-    setOnlyOpenNow(nextOpen);
-    fetchRestaurants(query, selectedRadius, budgetRange, nextOpen);
+  const handleApplyUnifiedFilters = (nextFilters: UnifiedFilterState) => {
+    setFilters(nextFilters);
+    fetchRestaurants(query, nextFilters);
   };
 
   const handleResetFilters = () => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    setQuery('');
-    setActiveTag('');
-    setSelectedRadius(null);
-    setBudgetRange({ min: 0, max: MAX_BUDGET_LIMIT });
-    setOnlyOpenNow(false);
-    fetchRestaurants('', null, { min: 0, max: MAX_BUDGET_LIMIT }, false);
+    const defaultFilters: UnifiedFilterState = {
+      budgetRange: { min: 0, max: MAX_BUDGET_LIMIT },
+      radius: null,
+      category: '',
+      openNow: false,
+    };
+    setFilters(defaultFilters);
+    fetchRestaurants(query, defaultFilters);
   };
 
   const handleClear = () => {
@@ -219,8 +220,38 @@ export default function RestaurantSearchScreen() {
       clearTimeout(debounceTimerRef.current);
     }
     setQuery('');
-    setActiveTag('');
-    fetchRestaurants('', selectedRadius, budgetRange, onlyOpenNow);
+    fetchRestaurants('', filtersRef.current);
+  };
+
+  const handleQuickFilterSelect = (
+    type: 'category' | 'radius' | 'query' | 'openNow',
+    value: any
+  ) => {
+    if (type === 'query') {
+      setQuery(value);
+      fetchRestaurants(value, filtersRef.current);
+    } else if (type === 'category') {
+      const nextFilters: UnifiedFilterState = {
+        ...filtersRef.current,
+        category: value,
+      };
+      setFilters(nextFilters);
+      fetchRestaurants(query, nextFilters);
+    } else if (type === 'radius') {
+      const nextFilters: UnifiedFilterState = {
+        ...filtersRef.current,
+        radius: value,
+      };
+      setFilters(nextFilters);
+      fetchRestaurants(query, nextFilters);
+    } else if (type === 'openNow') {
+      const nextFilters: UnifiedFilterState = {
+        ...filtersRef.current,
+        openNow: value,
+      };
+      setFilters(nextFilters);
+      fetchRestaurants(query, nextFilters);
+    }
   };
 
   const handleOpenDetail = (restaurant: Restaurant) => {
@@ -228,11 +259,9 @@ export default function RestaurantSearchScreen() {
     setDetailModalRestaurant(restaurant);
   };
 
-  const activeFilterCount =
-    (selectedRadius ? 1 : 0) +
-    (isBudgetFiltered ? 1 : 0) +
-    (onlyOpenNow ? 1 : 0) +
-    (activeTag ? 1 : 0);
+  const selectedCategoryObj = CATEGORY_OPTIONS.find(
+    (c) => c.value.toLowerCase() === filters.category.toLowerCase() && c.value !== ''
+  );
 
   const bottomInset = safeAreaInsets.bottom + BottomTabInset;
   const searchDropdownTopOffset =
@@ -246,7 +275,7 @@ export default function RestaurantSearchScreen() {
         selectedRestaurant={selectedRestaurant}
         onSelectRestaurant={setSelectedRestaurant}
         onOpenDetail={handleOpenDetail}
-        selectedRadiusKm={selectedRadius}
+        selectedRadiusKm={filters.radius}
         userLocation={{
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
@@ -254,7 +283,7 @@ export default function RestaurantSearchScreen() {
         isRealLocation={userLoc.isRealLocation}
       />
 
-      {/* 2. Floating Top Header: Search Bar & Multi-Filter Carousel */}
+      {/* 2. Floating Top Header: Search Bar & Unified Filter Bar */}
       <View
         style={[
           styles.floatingHeaderContainer,
@@ -305,12 +334,30 @@ export default function RestaurantSearchScreen() {
           </View>
         </View>
 
-        {/* Multi-Filter Combined Chips Carousel */}
+        {/* Combined Filter Triggers Carousel */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterTagsList}>
-          {/* Real GPS Location Indicator Tag */}
+          {/* Main Unified Filter Pill */}
+          <Pressable
+            onPress={() => setIsFilterModalVisible(true)}
+            style={({ pressed }) => [
+              styles.mainFilterBtn,
+              activeFilterCount > 0 ? styles.mainFilterBtnActive : styles.mainFilterBtnNormal,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText style={styles.mainFilterIcon}>🎚️</ThemedText>
+            <ThemedText
+              style={[
+                styles.mainFilterText,
+                activeFilterCount > 0 && styles.mainFilterTextActive,
+              ]}>
+              Bộ lọc {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
+            </ThemedText>
+          </Pressable>
+
+          {/* Real GPS Location Tag */}
           <Pressable
             onPress={() => userLoc.refreshLocation()}
             style={({ pressed }) => [
@@ -324,111 +371,56 @@ export default function RestaurantSearchScreen() {
             </ThemedText>
           </Pressable>
 
+          {/* Active Filter Badges */}
+          {isBudgetFiltered && (
+            <Pressable
+              onPress={() => setIsFilterModalVisible(true)}
+              style={({ pressed }) => [styles.activePillChip, pressed && styles.pressed]}>
+              <ThemedText style={styles.activePillText}>
+                💰 {formatVndCurrency(filters.budgetRange.min)} -{' '}
+                {filters.budgetRange.max >= MAX_BUDGET_LIMIT
+                  ? '10tr+'
+                  : formatVndCurrency(filters.budgetRange.max)}
+              </ThemedText>
+            </Pressable>
+          )}
+
+          {isRadiusFiltered && (
+            <Pressable
+              onPress={() => setIsFilterModalVisible(true)}
+              style={({ pressed }) => [styles.activePillChip, pressed && styles.pressed]}>
+              <ThemedText style={styles.activePillText}>📍 {filters.radius} km</ThemedText>
+            </Pressable>
+          )}
+
+          {selectedCategoryObj && (
+            <Pressable
+              onPress={() => setIsFilterModalVisible(true)}
+              style={({ pressed }) => [styles.activePillChip, pressed && styles.pressed]}>
+              <ThemedText style={styles.activePillText}>
+                {selectedCategoryObj.icon} {selectedCategoryObj.label}
+              </ThemedText>
+            </Pressable>
+          )}
+
+          {isOpenNowFiltered && (
+            <Pressable
+              onPress={() => setIsFilterModalVisible(true)}
+              style={({ pressed }) => [styles.activePillChip, pressed && styles.pressed]}>
+              <ThemedText style={styles.activePillText}>🟢 Đang mở cửa</ThemedText>
+            </Pressable>
+          )}
+
           {/* Reset All Filters Button when any filter is active */}
           {activeFilterCount > 0 && (
             <Pressable
               onPress={handleResetFilters}
               style={({ pressed }) => [styles.resetFilterBtn, pressed && styles.pressed]}>
               <ThemedText style={styles.resetFilterText}>
-                ✕ Đặt lại ({activeFilterCount})
+                ✕ Đặt lại tất cả
               </ThemedText>
             </Pressable>
           )}
-
-          {/* Budget Range Slider Trigger Pill */}
-          <Pressable
-            onPress={() => setIsBudgetModalVisible(true)}
-            style={({ pressed }) => [
-              styles.budgetFilterChip,
-              isBudgetFiltered ? styles.budgetFilterChipActive : styles.budgetFilterChipInactive,
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText style={styles.budgetChipIcon}>🎚️</ThemedText>
-            <ThemedText
-              style={[
-                styles.budgetChipText,
-                isBudgetFiltered && styles.budgetChipTextActive,
-              ]}>
-              {isBudgetFiltered
-                ? `Giá: ${formatVndCurrency(budgetRange.min)} - ${
-                    budgetRange.max >= MAX_BUDGET_LIMIT ? '10tr+' : formatVndCurrency(budgetRange.max)
-                  }`
-                : 'Ngân sách (0 - 10tr) ▾'}
-            </ThemedText>
-          </Pressable>
-
-          {/* Open/Closed Status Toggle */}
-          <Pressable
-            onPress={handleToggleOpenNow}
-            style={({ pressed }) => [
-              styles.toggleOpenBtn,
-              onlyOpenNow ? styles.toggleOpenBtnActive : styles.toggleOpenBtnInactive,
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText style={styles.toggleOpenDot}>{onlyOpenNow ? '🟢' : '⚪'}</ThemedText>
-            <ThemedText
-              style={[
-                styles.toggleOpenText,
-                onlyOpenNow && styles.toggleOpenTextActive,
-              ]}>
-              Đang mở cửa
-            </ThemedText>
-          </Pressable>
-
-          <View style={styles.filterDivider} />
-
-          {/* Radius Selector Pills */}
-          {RADIUS_OPTIONS.map((opt) => {
-            const isSelected = selectedRadius === opt.value;
-            return (
-              <Pressable
-                key={opt.id}
-                onPress={() => handleSelectRadius(opt.value)}
-                style={({ pressed }) => [
-                  styles.radiusChip,
-                  isSelected ? styles.radiusChipSelected : styles.radiusChipNormal,
-                  pressed && styles.pressed,
-                ]}>
-                <ThemedText
-                  style={[
-                    styles.radiusChipText,
-                    isSelected && styles.radiusChipTextSelected,
-                  ]}>
-                  {opt.label}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
-
-          <View style={styles.filterDivider} />
-
-          {/* Category Chips */}
-          {FILTER_TAGS.map((tag) => {
-            const isSelected = activeTag.toLowerCase() === tag.value.toLowerCase();
-            return (
-              <Pressable
-                key={tag.id}
-                onPress={() => handleSelectTag(tag.value)}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  {
-                    backgroundColor: isSelected ? '#FF5A5F' : '#FFFFFF',
-                    borderColor: isSelected ? '#FF5A5F' : '#E5E7EB',
-                  },
-                  pressed && styles.pressed,
-                ]}>
-                <ThemedText
-                  type="small"
-                  style={[
-                    styles.filterChipText,
-                    { color: isSelected ? '#FFFFFF' : '#374151' },
-                    isSelected && styles.filterChipTextSelected,
-                  ]}>
-                  {tag.label}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
         </ScrollView>
       </View>
 
@@ -451,19 +443,22 @@ export default function RestaurantSearchScreen() {
           longitude: userLoc.longitude,
         }}
         searchQuery={query}
-        selectedRadiusKm={selectedRadius}
+        selectedRadiusKm={filters.radius}
+        hasActiveSearchOrFilter={hasActiveSearchOrFilter}
+        onQuickFilterSelect={handleQuickFilterSelect}
         onClearSearch={handleClear}
         refreshing={refreshing}
-        onRefresh={() => fetchRestaurants(query, selectedRadius, budgetRange, onlyOpenNow, true)}
+        onRefresh={() => fetchRestaurants(query, filters, true)}
         bottomInset={bottomInset}
       />
 
-      {/* 4. Interactive Range Slider Modal (0 - 10.000.000 VNĐ) */}
-      <BudgetSliderModal
-        visible={isBudgetModalVisible}
-        onClose={() => setIsBudgetModalVisible(false)}
-        budgetRange={budgetRange}
-        onApplyRange={handleApplyBudgetRange}
+      {/* 4. Unified All-in-One Filter Modal (Slider for Price, Box grids for Radius, Category, Open status) */}
+      <UnifiedFilterModal
+        visible={isFilterModalVisible}
+        onClose={() => setIsFilterModalVisible(false)}
+        filters={filters}
+        onApplyFilters={handleApplyUnifiedFilters}
+        onResetFilters={handleResetFilters}
       />
 
       {/* 5. Rich Restaurant Detail Modal */}
@@ -588,6 +583,60 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontSize: 11,
     fontWeight: '700',
+  },
+  mainFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mainFilterBtnActive: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#FF5A5F',
+  },
+  mainFilterBtnNormal: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  mainFilterIcon: {
+    fontSize: 13,
+  },
+  mainFilterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  mainFilterTextActive: {
+    color: '#FF5A5F',
+    fontWeight: '800',
+  },
+  activePillChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  activePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1F2937',
   },
   budgetFilterChip: {
     flexDirection: 'row',

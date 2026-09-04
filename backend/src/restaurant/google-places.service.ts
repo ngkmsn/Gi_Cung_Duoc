@@ -44,7 +44,9 @@ export interface SearchLocationOptions {
   min_budget?: number;
   max_budget?: number;
   price_range?: string;
+  category?: string;
   open_now?: boolean;
+  limit?: number;
 }
 
 const TYPE_NAME_MAP: Record<string, { name: string; slug: string; icon: string }> = {

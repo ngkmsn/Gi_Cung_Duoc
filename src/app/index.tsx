@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -16,7 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useUserLocation } from '@/hooks/use-user-location';
-import { MOCK_RESTAURANTS } from '@/services/restaurantService';
+import { searchRestaurants } from '@/services/restaurantService';
 import { Restaurant } from '@/types/restaurant';
 
 const CATEGORIES = [
@@ -94,15 +94,34 @@ export default function HomeScreen() {
   const safeAreaInsets = useSafeAreaInsets();
   const userLoc = useUserLocation();
 
-  const [randomRestaurant, setRandomRestaurant] = useState<Restaurant>(MOCK_RESTAURANTS[0]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [randomRestaurant, setRandomRestaurant] = useState<Restaurant | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
 
+  useEffect(() => {
+    searchRestaurants('', {
+      latitude: userLoc.latitude,
+      longitude: userLoc.longitude,
+    })
+      .then((data) => {
+        setRestaurants(data);
+        if (data.length > 0) {
+          const idx = Math.floor(Math.random() * data.length);
+          setRandomRestaurant(data[idx]);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch restaurants for HomeScreen:', err);
+      });
+  }, [userLoc.latitude, userLoc.longitude]);
+
   const handleRandomPick = () => {
+    if (restaurants.length === 0) return;
     setIsSpinning(true);
     let count = 0;
     const interval = setInterval(() => {
-      const idx = Math.floor(Math.random() * MOCK_RESTAURANTS.length);
-      setRandomRestaurant(MOCK_RESTAURANTS[idx]);
+      const idx = Math.floor(Math.random() * restaurants.length);
+      setRandomRestaurant(restaurants[idx]);
       count++;
       if (count > 6) {
         clearInterval(interval);
@@ -235,43 +254,63 @@ export default function HomeScreen() {
               <ThemedText style={styles.deciderSubBadge}>Hôm nay chưa biết ăn gì?</ThemedText>
             </View>
 
-            <View style={styles.deciderBodyRow}>
-              <Image
-                source={{
-                  uri:
-                    randomRestaurant.image_url ||
-                    'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=400&q=80',
-                }}
-                style={styles.deciderImage}
-                contentFit="cover"
-              />
-              <View style={styles.deciderInfoCol}>
-                <ThemedText numberOfLines={1} style={styles.deciderRestaurantName}>
-                  {randomRestaurant.name}
-                </ThemedText>
-                <ThemedText numberOfLines={1} style={styles.deciderSpecialtyText}>
-                  ✨ {randomRestaurant.specialty_dish || 'Món ngon nức tiếng'}
-                </ThemedText>
-                <View style={styles.deciderMetaRow}>
-                  <ThemedText style={styles.deciderRating}>
-                    ★ {randomRestaurant.rating?.toFixed(1) || '4.8'}
+            {randomRestaurant ? (
+              <View style={styles.deciderBodyRow}>
+                <Image
+                  source={{
+                    uri:
+                      randomRestaurant.image_url ||
+                      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=400&q=80',
+                  }}
+                  style={styles.deciderImage}
+                  contentFit="cover"
+                />
+                <View style={styles.deciderInfoCol}>
+                  <ThemedText numberOfLines={1} style={styles.deciderRestaurantName}>
+                    {randomRestaurant.name}
                   </ThemedText>
-                  <ThemedText style={styles.deciderPrice}>• {randomRestaurant.price_range}</ThemedText>
-                  <ThemedText numberOfLines={1} style={styles.deciderAddress}>
-                    • {randomRestaurant.address?.split(',')[0]}
+                  <ThemedText numberOfLines={1} style={styles.deciderSpecialtyText}>
+                    ✨ {randomRestaurant.specialty_dish || 'Món ngon nổi bật'}
+                  </ThemedText>
+                  <View style={styles.deciderMetaRow}>
+                    {randomRestaurant.rating !== undefined && (
+                      <ThemedText style={styles.deciderRating}>
+                        ★ {randomRestaurant.rating.toFixed(1)}
+                      </ThemedText>
+                    )}
+                    {randomRestaurant.price_range && (
+                      <ThemedText style={styles.deciderPrice}>• {randomRestaurant.price_range}</ThemedText>
+                    )}
+                    <ThemedText numberOfLines={1} style={styles.deciderAddress}>
+                      • {randomRestaurant.address?.split(',')[0] || 'Hà Nội'}
+                    </ThemedText>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.deciderBodyRow}>
+                <View style={[styles.deciderImage, { backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' }]}>
+                  <ThemedText style={{ fontSize: 24 }}>🍽️</ThemedText>
+                </View>
+                <View style={styles.deciderInfoCol}>
+                  <ThemedText numberOfLines={1} style={styles.deciderRestaurantName}>
+                    Đang tìm quán ngon...
+                  </ThemedText>
+                  <ThemedText numberOfLines={1} style={styles.deciderSpecialtyText}>
+                    Nhấn để chọn ngẫu nhiên
                   </ThemedText>
                 </View>
               </View>
-            </View>
+            )}
 
             <View style={styles.deciderActionsRow}>
               <Pressable
                 onPress={handleRandomPick}
-                disabled={isSpinning}
+                disabled={isSpinning || restaurants.length === 0}
                 style={({ pressed }) => [
                   styles.deciderSpinBtn,
                   pressed && styles.pressed,
-                  isSpinning && styles.btnDisabled,
+                  (isSpinning || restaurants.length === 0) && styles.btnDisabled,
                 ]}>
                 <ThemedText style={styles.deciderSpinBtnText}>
                   {isSpinning ? 'Đang chọn món...' : '🎲 Đổi món khác'}
@@ -279,7 +318,7 @@ export default function HomeScreen() {
               </Pressable>
 
               <Pressable
-                onPress={() => handleNavigateExplore(randomRestaurant.name)}
+                onPress={() => handleNavigateExplore(randomRestaurant?.name || '')}
                 style={({ pressed }) => [styles.deciderExploreBtn, pressed && styles.pressed]}>
                 <ThemedText style={styles.deciderExploreBtnText}>Xem trên bản đồ ➔</ThemedText>
               </Pressable>
@@ -319,12 +358,14 @@ export default function HomeScreen() {
             <View style={styles.sectionHeaderRow}>
               <ThemedText style={styles.sectionTitle}>Quán Ngon Quanh Bạn ⭐</ThemedText>
               <Pressable onPress={() => handleNavigateExplore()}>
-                <ThemedText style={styles.viewAllText}>Xem tất cả ({MOCK_RESTAURANTS.length})</ThemedText>
+                <ThemedText style={styles.viewAllText}>
+                  {restaurants.length > 0 ? `Xem tất cả (${restaurants.length})` : 'Xem bản đồ ➔'}
+                </ThemedText>
               </Pressable>
             </View>
 
             <View style={styles.restaurantCardsList}>
-              {MOCK_RESTAURANTS.slice(0, 6).map((item) => (
+              {restaurants.slice(0, 6).map((item) => (
                 <RestaurantCard
                   key={item.id}
                   restaurant={item}

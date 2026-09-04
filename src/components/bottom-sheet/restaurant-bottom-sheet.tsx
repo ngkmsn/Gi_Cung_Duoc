@@ -23,6 +23,8 @@ interface RestaurantBottomSheetProps {
   userLocation?: { latitude: number; longitude: number };
   searchQuery?: string;
   selectedRadiusKm?: number | null;
+  hasActiveSearchOrFilter?: boolean;
+  onQuickFilterSelect?: (type: 'category' | 'radius' | 'query' | 'openNow', value: any) => void;
   onClearSearch?: () => void;
   refreshing: boolean;
   onRefresh: () => void;
@@ -44,6 +46,8 @@ export function RestaurantBottomSheet({
   userLocation,
   searchQuery,
   selectedRadiusKm,
+  hasActiveSearchOrFilter = false,
+  onQuickFilterSelect,
   onClearSearch,
   refreshing,
   onRefresh,
@@ -105,11 +109,13 @@ export function RestaurantBottomSheet({
     }
   };
 
-  const headerTitle = searchQuery?.trim()
+  const headerTitle = !hasActiveSearchOrFilter
+    ? 'Khám phá quán ngon'
+    : searchQuery?.trim()
     ? `Kết quả: "${searchQuery.trim()}"`
     : selectedRadiusKm
     ? `Quán trong bán kính ${selectedRadiusKm} km`
-    : 'Quán ngon gần bạn';
+    : 'Quán ăn phù hợp bộ lọc';
 
   return (
     <Animated.View
@@ -130,13 +136,17 @@ export function RestaurantBottomSheet({
                 {headerTitle}
               </ThemedText>
               <View style={styles.countBadge}>
-                <ThemedText style={styles.countBadgeText}>{restaurants.length}</ThemedText>
+                <ThemedText style={styles.countBadgeText}>
+                  {hasActiveSearchOrFilter ? `${restaurants.length} quán` : 'Gợi ý'}
+                </ThemedText>
               </View>
             </View>
             <ThemedText style={styles.sheetSubtitle}>
               {snapState === 'expanded'
                 ? 'Vuốt xuống để xem bản đồ rộng hơn'
-                : 'Chạm quán để xem chi tiết • Kéo lên để mở rộng'}
+                : hasActiveSearchOrFilter
+                ? 'Chạm quán để xem chi tiết • Kéo lên để mở rộng'
+                : 'Nhập tìm kiếm hoặc chọn bộ lọc để xem danh sách quán'}
             </ThemedText>
           </View>
 
@@ -165,20 +175,63 @@ export function RestaurantBottomSheet({
           );
         }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyIcon}>🔍</ThemedText>
-            <ThemedText style={styles.emptyTitle}>Không tìm thấy quán nào</ThemedText>
-            <ThemedText style={styles.emptyDesc}>
-              {searchQuery
-                ? `Không có quán hay món ăn "${searchQuery}" nào trong phạm vi tìm kiếm hiện tại.`
-                : 'Không có quán ăn nào phù hợp với bộ lọc hiện tại.'}
-            </ThemedText>
-            {onClearSearch && (
-              <Pressable onPress={onClearSearch} style={styles.emptyResetBtn}>
-                <ThemedText style={styles.emptyResetBtnText}>Xóa tìm kiếm & Xem tất cả quán</ThemedText>
-              </Pressable>
-            )}
-          </View>
+          !hasActiveSearchOrFilter ? (
+            <View style={styles.discoveryContainer}>
+              <ThemedText style={styles.emptyIcon}>🍜</ThemedText>
+              <ThemedText style={styles.emptyTitle}>Tìm kiếm quán ăn quanh bạn</ThemedText>
+              <ThemedText style={styles.emptyDesc}>
+                Nhập tên món ăn ở trên hoặc chọn nhanh một trong các gợi ý bên dưới:
+              </ThemedText>
+
+              <View style={styles.suggestionGrid}>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('query', 'phở')}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>🍜 Phở Hà Nội</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('category', 'coffee')}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>☕ Cà Phê & Trà</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('radius', 3)}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>📍 Gần tôi (&lt; 3 km)</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('openNow', true)}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>🟢 Đang mở cửa</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('category', 'vietnamese')}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>🥢 Món Việt</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => onQuickFilterSelect?.('category', 'western')}
+                  style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                  <ThemedText style={styles.suggestionText}>🍕 Đồ Tây & Pizza</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <ThemedText style={styles.emptyIcon}>🔍</ThemedText>
+              <ThemedText style={styles.emptyTitle}>Không tìm thấy quán nào</ThemedText>
+              <ThemedText style={styles.emptyDesc}>
+                {searchQuery
+                  ? `Không có quán hay món ăn "${searchQuery}" nào trong phạm vi tìm kiếm hiện tại.`
+                  : 'Không có quán ăn nào phù hợp với bộ lọc hiện tại.'}
+              </ThemedText>
+              {onClearSearch && (
+                <Pressable onPress={onClearSearch} style={styles.emptyResetBtn}>
+                  <ThemedText style={styles.emptyResetBtnText}>✕ Đặt lại tất cả bộ lọc</ThemedText>
+                </Pressable>
+              )}
+            </View>
+          )
         }
         contentContainerStyle={[
           styles.listContent,
@@ -323,5 +376,40 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     fontSize: 13,
     fontWeight: '700',
+  },
+  discoveryContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  suggestionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  suggestionChip: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  suggestionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  pressed: {
+    opacity: 0.8,
   },
 });

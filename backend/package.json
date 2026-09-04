@@ -24,7 +24,8 @@
     "migration:create": "npx typeorm-ts-node-esm migration:create",
     "migration:generate": "npm run build && npx typeorm-ts-node-esm migration:generate -d src/db/data-source.ts",
     "migration:run": "npm run build && npx typeorm-ts-node-esm migration:run -d src/db/data-source.ts",
-    "migration:revert": "npm run build && npx typeorm-ts-node-esm migration:revert -d src/db/data-source.ts"
+    "migration:revert": "npm run build && npx typeorm-ts-node-esm migration:revert -d src/db/data-source.ts",
+    "import:osm:hanoi": "node --loader ts-node/esm src/scripts/import-osm-hanoi.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

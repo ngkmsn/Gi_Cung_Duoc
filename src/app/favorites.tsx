@@ -13,20 +13,13 @@ import { RestaurantCard } from '@/components/restaurant-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { MOCK_RESTAURANTS } from '@/services/restaurantService';
 import { Restaurant } from '@/types/restaurant';
 
 export default function FavoritesScreen() {
   const router = useRouter();
   const safeAreaInsets = useSafeAreaInsets();
 
-  // Pre-seed with favorite restaurants
-  const [favorites, setFavorites] = useState<Restaurant[]>([
-    MOCK_RESTAURANTS[0], // Pho Thin Lo Duc
-    MOCK_RESTAURANTS[2], // Cafe Giang
-    MOCK_RESTAURANTS[4], // Pizza 4P's Trang Tien
-    MOCK_RESTAURANTS[7], // Kem Trang Tien
-  ]);
+  const [favorites, setFavorites] = useState<Restaurant[]>([]);
 
   const [activeTab, setActiveTab] = useState('all');
 
