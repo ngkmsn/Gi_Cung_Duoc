@@ -640,6 +640,76 @@ function isRestaurantOpenNow(restaurant: Restaurant, date: Date = new Date()): b
   return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
 }
 
+export function removeVietnameseTones(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+function matchesRestaurant(restaurant: Restaurant, query: string): boolean {
+  if (!query) return true;
+  const rawQuery = query.toLowerCase().trim();
+  const normQuery = removeVietnameseTones(query);
+
+  const rawName = (restaurant.name || '').toLowerCase();
+  const normName = removeVietnameseTones(restaurant.name || '');
+
+  const rawAddress = (restaurant.address || '').toLowerCase();
+  const normAddress = removeVietnameseTones(restaurant.address || '');
+
+  const rawSpecialty = (restaurant.specialty_dish || '').toLowerCase();
+  const normSpecialty = removeVietnameseTones(restaurant.specialty_dish || '');
+
+  if (rawName.includes(rawQuery) || normName.includes(normQuery)) return true;
+  if (rawAddress.includes(rawQuery) || normAddress.includes(normQuery)) return true;
+  if (rawSpecialty.includes(rawQuery) || normSpecialty.includes(normQuery)) return true;
+
+  if (
+    restaurant.categories?.some((cat) => {
+      const rawCat = cat.name.toLowerCase();
+      const normCat = removeVietnameseTones(cat.name);
+      return rawCat.includes(rawQuery) || normCat.includes(normQuery) || cat.slug.includes(normQuery);
+    })
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function sortRestaurantsByDistance<T extends Restaurant>(
+  items: T[],
+  userLat?: number,
+  userLng?: number
+): T[] {
+  if (userLat === undefined || userLng === undefined) {
+    return items;
+  }
+
+  return [...items].sort((a, b) => {
+    const latA = typeof a.latitude === 'string' ? parseFloat(a.latitude) : a.latitude;
+    const lngA = typeof a.longitude === 'string' ? parseFloat(a.longitude) : a.longitude;
+    const latB = typeof b.latitude === 'string' ? parseFloat(b.latitude) : b.latitude;
+    const lngB = typeof b.longitude === 'string' ? parseFloat(b.longitude) : b.longitude;
+
+    const hasA = latA !== undefined && !isNaN(latA) && lngA !== undefined && !isNaN(lngA);
+    const hasB = latB !== undefined && !isNaN(latB) && lngB !== undefined && !isNaN(lngB);
+
+    if (!hasA && !hasB) return 0;
+    if (!hasA) return 1;
+    if (!hasB) return -1;
+
+    const distA = calculateDistanceKm(userLat, userLng, latA!, lngA!);
+    const distB = calculateDistanceKm(userLat, userLng, latB!, lngB!);
+
+    return distA - distB;
+  });
+}
+
 export async function searchRestaurants(
   query: string = '',
   location?: SearchLocationParams
@@ -653,18 +723,7 @@ export async function searchRestaurants(
 
     let results = MOCK_RESTAURANTS;
     if (trimmedQuery) {
-      const lower = trimmedQuery.toLowerCase();
-      results = MOCK_RESTAURANTS.filter((restaurant) => {
-        const matchName = restaurant.name.toLowerCase().includes(lower);
-        const matchAddress = restaurant.address?.toLowerCase().includes(lower);
-        const matchSpecialty = restaurant.specialty_dish?.toLowerCase().includes(lower);
-        const matchCategory = restaurant.categories?.some(
-          (cat) =>
-            cat.name.toLowerCase().includes(lower) ||
-            cat.slug.toLowerCase().includes(lower)
-        );
-        return matchName || matchAddress || matchSpecialty || matchCategory;
-      });
+      results = MOCK_RESTAURANTS.filter((restaurant) => matchesRestaurant(restaurant, trimmedQuery));
     }
 
     // Filter by budget range (min_budget and max_budget) in VNĐ
@@ -701,16 +760,8 @@ export async function searchRestaurants(
         });
       }
 
-      // Sort by distance
-      return [...results].sort((a, b) => {
-        const latA = typeof a.latitude === 'string' ? parseFloat(a.latitude) : a.latitude;
-        const lngA = typeof a.longitude === 'string' ? parseFloat(a.longitude) : a.longitude;
-        const latB = typeof b.latitude === 'string' ? parseFloat(b.latitude) : b.latitude;
-        const lngB = typeof b.longitude === 'string' ? parseFloat(b.longitude) : b.longitude;
-        const distA = calculateDistanceKm(userLat, userLng, latA, lngA);
-        const distB = calculateDistanceKm(userLat, userLng, latB, lngB);
-        return distA - distB;
-      });
+      // Sort by distance (closest first)
+      return sortRestaurantsByDistance(results, userLat, userLng);
     }
 
     return results;
@@ -760,24 +811,17 @@ export async function searchRestaurants(
     }
 
     const data: Restaurant[] = await response.json();
+    // Ensure sorting by distance (closest first) when user location is available
+    if (location?.latitude && location?.longitude) {
+      return sortRestaurantsByDistance(data, location.latitude, location.longitude);
+    }
     return data;
   } catch (error) {
     console.warn('Failed to fetch from NestJS API, falling back to mock data:', error);
     // Fallback search over mock data if API is unreachable
     let results = MOCK_RESTAURANTS;
     if (trimmedQuery) {
-      const lower = trimmedQuery.toLowerCase();
-      results = MOCK_RESTAURANTS.filter((restaurant) => {
-        const matchName = restaurant.name.toLowerCase().includes(lower);
-        const matchAddress = restaurant.address?.toLowerCase().includes(lower);
-        const matchSpecialty = restaurant.specialty_dish?.toLowerCase().includes(lower);
-        const matchCategory = restaurant.categories?.some(
-          (cat) =>
-            cat.name.toLowerCase().includes(lower) ||
-            cat.slug.toLowerCase().includes(lower)
-        );
-        return matchName || matchAddress || matchSpecialty || matchCategory;
-      });
+      results = MOCK_RESTAURANTS.filter((restaurant) => matchesRestaurant(restaurant, trimmedQuery));
     }
 
     if (location?.min_budget !== undefined || location?.max_budget !== undefined) {
@@ -796,16 +840,21 @@ export async function searchRestaurants(
       results = results.filter((r) => isRestaurantOpenNow(r));
     }
 
-    if (location?.latitude && location?.longitude && location?.radius) {
+    if (location?.latitude && location?.longitude) {
       const userLat = location.latitude;
       const userLng = location.longitude;
-      const radiusKm = location.radius > 50 ? location.radius / 1000 : location.radius;
-      results = results.filter((r) => {
-        const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
-        const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
-        if (!lat || !lng) return false;
-        return calculateDistanceKm(userLat, userLng, lat, lng) <= radiusKm;
-      });
+      if (location?.radius) {
+        const radiusKm = location.radius > 50 ? location.radius / 1000 : location.radius;
+        results = results.filter((r) => {
+          const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
+          const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
+          if (!lat || !lng) return false;
+          return calculateDistanceKm(userLat, userLng, lat, lng) <= radiusKm;
+        });
+      }
+
+      // Sort by distance (closest first)
+      return sortRestaurantsByDistance(results, userLat, userLng);
     }
 
     return results;

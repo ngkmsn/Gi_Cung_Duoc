@@ -21,6 +21,9 @@ interface RestaurantBottomSheetProps {
   onSelectRestaurant: (restaurant: Restaurant | null) => void;
   onOpenDetail?: (restaurant: Restaurant) => void;
   userLocation?: { latitude: number; longitude: number };
+  searchQuery?: string;
+  selectedRadiusKm?: number | null;
+  onClearSearch?: () => void;
   refreshing: boolean;
   onRefresh: () => void;
   bottomInset: number;
@@ -39,6 +42,9 @@ export function RestaurantBottomSheet({
   onSelectRestaurant,
   onOpenDetail,
   userLocation,
+  searchQuery,
+  selectedRadiusKm,
+  onClearSearch,
   refreshing,
   onRefresh,
   bottomInset,
@@ -99,6 +105,12 @@ export function RestaurantBottomSheet({
     }
   };
 
+  const headerTitle = searchQuery?.trim()
+    ? `Kết quả: "${searchQuery.trim()}"`
+    : selectedRadiusKm
+    ? `Quán trong bán kính ${selectedRadiusKm} km`
+    : 'Quán ngon gần bạn';
+
   return (
     <Animated.View
       style={[
@@ -114,7 +126,9 @@ export function RestaurantBottomSheet({
         <Pressable onPress={handleToggleExpand} style={styles.sheetHeaderRow}>
           <View style={styles.headerTitleCol}>
             <View style={styles.titleWithBadge}>
-              <ThemedText style={styles.sheetTitle}>Quán ngon gần bạn</ThemedText>
+              <ThemedText style={styles.sheetTitle} numberOfLines={1}>
+                {headerTitle}
+              </ThemedText>
               <View style={styles.countBadge}>
                 <ThemedText style={styles.countBadgeText}>{restaurants.length}</ThemedText>
               </View>
@@ -150,6 +164,22 @@ export function RestaurantBottomSheet({
             </View>
           );
         }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyIcon}>🔍</ThemedText>
+            <ThemedText style={styles.emptyTitle}>Không tìm thấy quán nào</ThemedText>
+            <ThemedText style={styles.emptyDesc}>
+              {searchQuery
+                ? `Không có quán hay món ăn "${searchQuery}" nào trong phạm vi tìm kiếm hiện tại.`
+                : 'Không có quán ăn nào phù hợp với bộ lọc hiện tại.'}
+            </ThemedText>
+            {onClearSearch && (
+              <Pressable onPress={onClearSearch} style={styles.emptyResetBtn}>
+                <ThemedText style={styles.emptyResetBtnText}>Xóa tìm kiếm & Xem tất cả quán</ThemedText>
+              </Pressable>
+            )}
+          </View>
+        }
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: bottomInset + Spacing.four },
@@ -249,11 +279,49 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
+    flexGrow: 1,
   },
   cardWrapper: {
     width: '100%',
   },
   cardWrapperSelected: {
     transform: [{ scale: 1.01 }],
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  emptyResetBtn: {
+    marginTop: 12,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  emptyResetBtnText: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

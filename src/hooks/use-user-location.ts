@@ -35,7 +35,7 @@ export function useUserLocation() {
         setLocationState({
           latitude: DEFAULT_USER_LOCATION.latitude,
           longitude: DEFAULT_USER_LOCATION.longitude,
-          addressLabel: 'Hồ Hoàn Kiếm, Hà Nội',
+          addressLabel: 'Hồ Hoàn Kiếm, Hà Nội (Mặc định)',
           isRealLocation: false,
           loading: false,
           permissionGranted: false,
@@ -44,14 +44,30 @@ export function useUserLocation() {
         return;
       }
 
-      // 2. Get current position with balanced accuracy for speed
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      // 2. Try last known position first for instant speed
+      let latitude: number | null = null;
+      let longitude: number | null = null;
 
-      const { latitude, longitude } = position.coords;
+      try {
+        const lastKnown = await Location.getLastKnownPositionAsync({});
+        if (lastKnown?.coords) {
+          latitude = lastKnown.coords.latitude;
+          longitude = lastKnown.coords.longitude;
+        }
+      } catch (e) {}
 
-      // 3. Try reverse geocoding to get human-friendly street / district name
+      // 3. If no last known position, get current position with timeout
+      if (latitude === null || longitude === null) {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      }
+
+      console.log('[useUserLocation] Real GPS location obtained:', latitude, longitude);
+
+      // 4. Try reverse geocoding to get human-friendly street / district name
       let addressLabel = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
       try {
         const reverseGeocode = await Location.reverseGeocodeAsync({
@@ -72,7 +88,7 @@ export function useUserLocation() {
           }
         }
       } catch (e) {
-        // Reverse geocode is optional, coordinates are primary
+        // Reverse geocode is optional
       }
 
       setLocationState({
@@ -89,7 +105,7 @@ export function useUserLocation() {
       setLocationState({
         latitude: DEFAULT_USER_LOCATION.latitude,
         longitude: DEFAULT_USER_LOCATION.longitude,
-        addressLabel: 'Hồ Hoàn Kiếm, Hà Nội',
+        addressLabel: 'Hồ Hoàn Kiếm, Hà Nội (Mặc định)',
         isRealLocation: false,
         loading: false,
         permissionGranted: false,

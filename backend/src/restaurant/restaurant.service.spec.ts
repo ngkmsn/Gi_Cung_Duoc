@@ -82,4 +82,31 @@ describe('RestaurantService', () => {
     });
     expect(result).toEqual(googlePlaceResult);
   });
+
+  it('should sort search results by distance from user location (nearest first)', async () => {
+    const nearRestaurant: Partial<Restaurant> = {
+      id: 'near',
+      name: 'Near Restaurant',
+      latitude: 21.0285,
+      longitude: 105.8542, // Exactly at user location
+    };
+    const farRestaurant: Partial<Restaurant> = {
+      id: 'far',
+      name: 'Far Restaurant',
+      latitude: 21.0800,
+      longitude: 105.9000, // ~7 km away
+    };
+
+    // Return in reverse order (far first, near second)
+    mockRepository.find.mockResolvedValue([farRestaurant, nearRestaurant]);
+    mockGooglePlacesService.isAvailable.mockReturnValue(false);
+
+    const result = await service.search('', {
+      latitude: 21.0285,
+      longitude: 105.8542,
+    });
+
+    expect(result[0].id).toBe('near');
+    expect(result[1].id).toBe('far');
+  });
 });

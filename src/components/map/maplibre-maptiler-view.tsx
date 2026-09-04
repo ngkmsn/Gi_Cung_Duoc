@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Platform,
   Pressable,
@@ -19,6 +19,7 @@ interface MapLibreMapTilerViewProps {
   onSelectRestaurant: (restaurant: Restaurant | null) => void;
   onOpenDetail?: (restaurant: Restaurant) => void;
   userLocation?: { latitude: number; longitude: number };
+  isRealLocation?: boolean;
   selectedRadiusKm?: number | null;
 }
 
@@ -36,14 +37,17 @@ export function MapLibreMapTilerView({
   onSelectRestaurant,
   onOpenDetail,
   userLocation = DEFAULT_USER_LOCATION,
+  isRealLocation = false,
   selectedRadiusKm = null,
 }: MapLibreMapTilerViewProps) {
   const webViewRef = useRef<WebView>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const initialUserLocation = useRef(userLocation).current;
+
   const htmlContent = useMemo(() => {
-    const userLat = userLocation.latitude;
-    const userLng = userLocation.longitude;
+    const userLat = initialUserLocation.latitude;
+    const userLng = initialUserLocation.longitude;
     const maptilerKey = Config.MAPTILER_API_KEY || '';
     const initialRadius = selectedRadiusKm || 0;
 
@@ -74,56 +78,159 @@ export function MapLibreMapTilerView({
     
     /* User Location Pulse Marker */
     .user-marker {
-      width: 22px;
-      height: 22px;
+      width: 20px;
+      height: 20px;
       background: #2563EB;
       border: 3px solid #FFFFFF;
       border-radius: 50%;
-      box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.28);
+      box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.28);
       cursor: pointer;
-      z-index: 100 !important;
+      z-index: 100;
     }
 
-    /* Food Restaurant Marker Pill */
-    .food-marker {
+    /* CRITICAL: MapLibre Marker root MUST be position absolute */
+    .maplibregl-marker {
+      position: absolute !important;
+      top: 0;
+      left: 0;
+      will-change: transform;
+      pointer-events: auto;
+    }
+
+    /* Clean Food Pin: fixed dimensions */
+    .pin-container {
+      width: 32px;
+      height: 38px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .pin-container.active {
+      z-index: 9999 !important;
+    }
+
+    /* Pin Marker Head & Needle (Fixed 32x38px) */
+    .pin-marker {
+      width: 32px;
+      height: 38px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      pointer-events: auto;
+    }
+
+    .pin-circle {
+      width: 32px;
+      height: 32px;
+      background: #FFFFFF;
+      border: 2.5px solid #FF5A5F;
+      border-radius: 50%;
       display: flex;
       align-items: center;
-      gap: 5px;
-      background: #FFFFFF;
-      color: #0F172A;
-      padding: 6px 10px;
-      border-radius: 18px;
+      justify-content: center;
+      font-size: 15px;
+      box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease, border-color 0.2s ease;
+      z-index: 2;
+    }
+
+    .pin-container:hover .pin-circle {
+      transform: scale(1.15);
+    }
+
+    .pin-container.active .pin-circle {
+      background: #FF5A5F;
+      border-color: #FFFFFF;
+      transform: scale(1.22);
+      box-shadow: 0 5px 16px rgba(255, 90, 95, 0.55);
+    }
+
+    .pin-needle {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #FF5A5F;
+      margin-top: -1px;
+      z-index: 1;
+      transition: border-top-color 0.2s ease;
+    }
+
+    .pin-container.active .pin-needle {
+      border-top-color: #FF5A5F;
+    }
+
+    /* Floating Callout Label: positioned above pin head */
+    .pin-label {
+      position: absolute;
+      bottom: 42px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 220px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      color: #FFFFFF;
+      padding: 4px 8px;
+      border-radius: 12px;
       font-size: 11px;
       font-weight: 700;
-      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
-      border: 1.5px solid #E2E8F0;
       white-space: nowrap;
-      cursor: pointer;
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease, color 0.2s ease;
-      transform: translate(-50%, -100%);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+      z-index: 10;
     }
 
-    .food-marker:hover {
-      transform: translate(-50%, -105%) scale(1.08);
+    .pin-label::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: rgba(15, 23, 42, 0.92);
     }
 
-    .food-marker.active {
-      background: #FF5A5F;
-      color: #FFFFFF;
-      border-color: #FFFFFF;
-      box-shadow: 0 6px 16px rgba(255, 90, 95, 0.45);
-      z-index: 999 !important;
-      transform: translate(-50%, -108%) scale(1.15);
-    }
-
-    .food-marker .price {
-      color: #059669;
+    .pin-label .price {
+      color: #34D399;
       font-size: 10px;
       font-weight: 800;
     }
 
-    .food-marker.active .price {
+    /* Show label on hover */
+    .pin-container:hover .pin-label {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Show label when active/selected */
+    .pin-container.active .pin-label {
+      opacity: 1;
+      pointer-events: auto;
+      background: #FF5A5F;
       color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(255, 90, 95, 0.4);
+    }
+
+    .pin-container.active .pin-label::after {
+      border-top-color: #FF5A5F;
+    }
+
+    .pin-container.active .pin-label .price {
+      color: #FFFFFF;
+    }
+
+    /* Show labels on high zoom level (>= 15.5) */
+    .map-zoomed-in .pin-container .pin-label {
+      opacity: 0.95;
+      pointer-events: auto;
     }
 
     .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left {
@@ -135,11 +242,13 @@ export function MapLibreMapTilerView({
   <div id="map"></div>
 
   <script>
-    const userLocation = [${userLng}, ${userLat}];
+    let userLocation = [${userLng}, ${userLat}];
     let restaurants = ${restaurantsJson};
     let activeId = "${selectedRestaurant?.id || ''}";
     let currentRadiusKm = ${initialRadius};
     let markersMap = {};
+    let userMarker = null;
+    let hasCenteredOnRealGps = false;
 
     let mapStyle;
     const maptilerKey = "${maptilerKey}".trim();
@@ -150,26 +259,23 @@ export function MapLibreMapTilerView({
       mapStyle = {
         version: 8,
         sources: {
-          'detailed-streets': {
+          'osm-tiles': {
             type: 'raster',
             tiles: [
-              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-              'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-              'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+              'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
             ],
             tileSize: 256,
-            attribution: '© CARTO, © OpenStreetMap contributors',
-            maxzoom: 20
+            attribution: '© OpenStreetMap contributors',
+            maxzoom: 19
           }
         },
         layers: [
           {
-            id: 'detailed-streets-layer',
+            id: 'osm-layer',
             type: 'raster',
-            source: 'detailed-streets',
+            source: 'osm-tiles',
             minzoom: 0,
-            maxzoom: 20
+            maxzoom: 19
           }
         ]
       };
@@ -192,10 +298,10 @@ export function MapLibreMapTilerView({
       attributionControl: false
     });
 
-    // Add User Current Location Marker
+    // Add User Current Location Marker with anchor: 'center'
     const userEl = document.createElement('div');
     userEl.className = 'user-marker';
-    new maplibregl.Marker({ element: userEl })
+    userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' })
       .setLngLat(userLocation)
       .addTo(map);
 
@@ -226,7 +332,23 @@ export function MapLibreMapTilerView({
       };
     }
 
+    function checkZoomLevel() {
+      const z = map.getZoom();
+      const mapEl = document.getElementById('map');
+      if (mapEl) {
+        if (z >= 15.5) {
+          mapEl.classList.add('map-zoomed-in');
+        } else {
+          mapEl.classList.remove('map-zoomed-in');
+        }
+      }
+    }
+
+    map.on('zoom', checkZoomLevel);
+
     map.on('load', () => {
+      checkZoomLevel();
+
       // Add Radius Circle Source and Layers
       map.addSource('radius-circle-source', {
         type: 'geojson',
@@ -256,6 +378,14 @@ export function MapLibreMapTilerView({
       });
 
       renderMarkers();
+
+      // Notify parent that map is loaded and ready
+      const readyMsg = JSON.stringify({ type: 'MAP_READY' });
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(readyMsg);
+      } else if (window.parent) {
+        window.parent.postMessage(readyMsg, '*');
+      }
     });
 
     function renderMarkers() {
@@ -269,15 +399,26 @@ export function MapLibreMapTilerView({
         if (!r.lat || !r.lng) return;
 
         const el = document.createElement('div');
-        el.className = 'food-marker' + (r.id === activeId ? ' active' : '');
-        el.innerHTML = '<span>' + r.icon + '</span><span>' + r.name + '</span><span class="price">• ' + r.price + '</span>';
+        el.className = 'pin-container' + (r.id === activeId ? ' active' : '');
+        el.innerHTML =
+          '<div class="pin-label">' +
+            '<span>' + r.name + '</span>' +
+            '<span class="price">• ' + r.price + '</span>' +
+          '</div>' +
+          '<div class="pin-marker">' +
+            '<div class="pin-circle">' +
+              '<span>' + r.icon + '</span>' +
+            '</div>' +
+            '<div class="pin-needle"></div>' +
+          '</div>';
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          sendSelection(r.id);
+          selectRestaurant(r.id, true);
         });
 
-        const marker = new maplibregl.Marker({ element: el })
+        // Use anchor: 'bottom' so needle tip points exactly to [r.lng, r.lat]
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([r.lng, r.lat])
           .addTo(map);
 
@@ -286,12 +427,25 @@ export function MapLibreMapTilerView({
     }
 
     map.on('click', () => {
-      sendSelection(null);
+      selectRestaurant(null, false);
     });
 
-    function sendSelection(id) {
+    function selectRestaurant(id, shouldFly = true) {
       activeId = id;
       updateActiveMarker();
+
+      if (id && markersMap[id]) {
+        const item = markersMap[id];
+        if (shouldFly) {
+          map.flyTo({
+            center: [item.lng, item.lat],
+            zoom: 16.5,
+            speed: 1.2,
+            curve: 1.2,
+            essential: true
+          });
+        }
+      }
 
       const message = JSON.stringify({ type: 'SELECT_RESTAURANT', id: id });
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -316,12 +470,18 @@ export function MapLibreMapTilerView({
     window.addEventListener('message', (event) => {
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (data.type === 'SET_SELECTED' && data.id) {
-          activeId = data.id;
+        if (data.type === 'SET_SELECTED') {
+          activeId = data.id || '';
           updateActiveMarker();
-          const target = markersMap[data.id];
-          if (target) {
-            map.flyTo({ center: [target.lng, target.lat], zoom: 16, speed: 1.2 });
+          if (data.id && markersMap[data.id]) {
+            const target = markersMap[data.id];
+            map.flyTo({
+              center: [target.lng, target.lat],
+              zoom: 16.5,
+              speed: 1.2,
+              curve: 1.2,
+              essential: true
+            });
           }
         } else if (data.type === 'SET_RADIUS') {
           currentRadiusKm = data.radiusKm || 0;
@@ -331,6 +491,21 @@ export function MapLibreMapTilerView({
           }
           if (currentRadiusKm > 0) {
             map.flyTo({ center: userLocation, zoom: calculateInitialZoom(currentRadiusKm), speed: 1.2 });
+          }
+        } else if (data.type === 'UPDATE_USER_LOCATION') {
+          if (data.latitude && data.longitude) {
+            userLocation = [data.longitude, data.latitude];
+            if (userMarker) {
+              userMarker.setLngLat(userLocation);
+            }
+            const source = map.getSource('radius-circle-source');
+            if (source) {
+              source.setData(createGeoJSONCircle(userLocation, currentRadiusKm));
+            }
+            if (data.isRealLocation && !hasCenteredOnRealGps && !activeId) {
+              hasCenteredOnRealGps = true;
+              map.flyTo({ center: userLocation, zoom: calculateInitialZoom(currentRadiusKm), speed: 1.2 });
+            }
           }
         } else if (data.type === 'UPDATE_RESTAURANTS' && Array.isArray(data.restaurants)) {
           restaurants = data.restaurants;
@@ -348,58 +523,126 @@ export function MapLibreMapTilerView({
 </body>
 </html>
 `;
-  }, [userLocation]);
+  }, []);
+
+  // Send message helper
+  const postToMap = useCallback((payloadObj: any) => {
+    const json = typeof payloadObj === 'string' ? payloadObj : JSON.stringify(payloadObj);
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(json, '*');
+    } else {
+      webViewRef.current?.postMessage(json);
+    }
+  }, []);
 
   // Handle messages from Web / WebView
-  const handleMessage = (event: any) => {
-    try {
-      const data =
-        typeof event.nativeEvent?.data === 'string'
-          ? JSON.parse(event.nativeEvent.data)
-          : event.data;
+  const handleMessage = useCallback(
+    (event: any) => {
+      try {
+        const rawData =
+          typeof event.nativeEvent?.data === 'string'
+            ? event.nativeEvent.data
+            : typeof event.data === 'string'
+            ? event.data
+            : event.data;
 
-      if (data.type === 'SELECT_RESTAURANT') {
-        if (!data.id) {
-          onSelectRestaurant(null);
-          return;
+        const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+        if (!data) return;
+
+        if (data.type === 'SELECT_RESTAURANT') {
+          if (!data.id) {
+            onSelectRestaurant(null);
+            return;
+          }
+          const target = restaurants.find((r) => r.id === data.id);
+          onSelectRestaurant(target || null);
+        } else if (data.type === 'MAP_READY') {
+          // Map is loaded and ready: immediately push current location, restaurants, radius & selected
+          postToMap({
+            type: 'UPDATE_USER_LOCATION',
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            isRealLocation: Boolean(isRealLocation),
+          });
+          postToMap({
+            type: 'UPDATE_RESTAURANTS',
+            restaurants: restaurants.map((r) => ({
+              id: r.id,
+              name: r.name,
+              address: r.address || '',
+              lat: typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude,
+              lng: typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude,
+              price: r.price_range || '$',
+              icon: CATEGORY_ICONS[r.categories?.[0]?.slug?.toLowerCase() || 'vietnamese'] || '🍽️',
+            })),
+          });
+          postToMap({
+            type: 'SET_RADIUS',
+            radiusKm: selectedRadiusKm || 0,
+          });
+          if (selectedRestaurant?.id) {
+            postToMap({
+              type: 'SET_SELECTED',
+              id: selectedRestaurant.id,
+            });
+          }
         }
-        const target = restaurants.find((r) => r.id === data.id);
-        onSelectRestaurant(target || null);
-      }
-    } catch (err) {}
-  };
+      } catch (err) {}
+    },
+    [
+      isRealLocation,
+      onSelectRestaurant,
+      postToMap,
+      restaurants,
+      selectedRadiusKm,
+      selectedRestaurant?.id,
+      userLocation.latitude,
+      userLocation.longitude,
+    ]
+  );
+
+  // Web Message listener bridge
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const onWebMessage = (event: MessageEvent) => {
+        handleMessage(event);
+      };
+      window.addEventListener('message', onWebMessage);
+      return () => {
+        window.removeEventListener('message', onWebMessage);
+      };
+    }
+  }, [handleMessage]);
 
   // Sync selected restaurant
   useEffect(() => {
-    const payload = JSON.stringify({
+    postToMap({
       type: 'SET_SELECTED',
       id: selectedRestaurant?.id || null,
     });
+  }, [postToMap, selectedRestaurant?.id]);
 
-    if (Platform.OS === 'web') {
-      iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    } else {
-      webViewRef.current?.postMessage(payload);
-    }
-  }, [selectedRestaurant?.id]);
+  // Sync user location changes smoothly without reloading the map
+  useEffect(() => {
+    postToMap({
+      type: 'UPDATE_USER_LOCATION',
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude,
+      isRealLocation: Boolean(isRealLocation),
+    });
+  }, [isRealLocation, postToMap, userLocation.latitude, userLocation.longitude]);
 
   // Sync radius circle changes
   useEffect(() => {
-    const payload = JSON.stringify({
+    postToMap({
       type: 'SET_RADIUS',
       radiusKm: selectedRadiusKm || 0,
     });
-
-    if (Platform.OS === 'web') {
-      iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    } else {
-      webViewRef.current?.postMessage(payload);
-    }
-  }, [selectedRadiusKm]);
+  }, [postToMap, selectedRadiusKm]);
 
   // Sync restaurant list changes
   useEffect(() => {
-    const payload = JSON.stringify({
+    postToMap({
       type: 'UPDATE_RESTAURANTS',
       restaurants: restaurants.map((r) => ({
         id: r.id,
@@ -411,30 +654,18 @@ export function MapLibreMapTilerView({
         icon: CATEGORY_ICONS[r.categories?.[0]?.slug?.toLowerCase() || 'vietnamese'] || '🍽️',
       })),
     });
-
-    if (Platform.OS === 'web') {
-      iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    } else {
-      webViewRef.current?.postMessage(payload);
-    }
-  }, [restaurants]);
+  }, [postToMap, restaurants]);
 
   const handleZoomIn = () => {
-    const payload = JSON.stringify({ type: 'ZOOM_IN' });
-    if (Platform.OS === 'web') iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    else webViewRef.current?.postMessage(payload);
+    postToMap({ type: 'ZOOM_IN' });
   };
 
   const handleZoomOut = () => {
-    const payload = JSON.stringify({ type: 'ZOOM_OUT' });
-    if (Platform.OS === 'web') iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    else webViewRef.current?.postMessage(payload);
+    postToMap({ type: 'ZOOM_OUT' });
   };
 
   const handleRecenter = () => {
-    const payload = JSON.stringify({ type: 'RECENTER' });
-    if (Platform.OS === 'web') iframeRef.current?.contentWindow?.postMessage(payload, '*');
-    else webViewRef.current?.postMessage(payload);
+    postToMap({ type: 'RECENTER' });
   };
 
   const handleDirections = (restaurant: Restaurant) => {
@@ -455,6 +686,14 @@ export function MapLibreMapTilerView({
           srcDoc={htmlContent}
           style={styles.webMapFrame as any}
           title="MapLibre MapTiler Detailed Map"
+          onLoad={() => {
+            postToMap({
+              type: 'UPDATE_USER_LOCATION',
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+              isRealLocation: Boolean(isRealLocation),
+            });
+          }}
         />
       ) : (
         <WebView

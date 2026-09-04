@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -15,12 +15,20 @@ import { RestaurantBottomSheet } from '@/components/bottom-sheet/restaurant-bott
 import { BudgetRange, BudgetSliderModal } from '@/components/budget-slider-modal';
 import { MapLibreMapTilerView } from '@/components/map/maplibre-maptiler-view';
 import { RestaurantDetailModal } from '@/components/restaurant-detail-modal';
+import { SearchHistoryDropdown } from '@/components/search/search-history-dropdown';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
 import { searchRestaurants } from '@/services/restaurantService';
+import {
+  clearAllSearchHistory,
+  getSearchHistory,
+  removeSearchHistoryItem,
+  saveSearchQuery,
+  SearchHistoryItem,
+} from '@/services/searchHistoryService';
 import { Restaurant } from '@/types/restaurant';
 import { formatVndCurrency } from '@/utils/price';
 
@@ -56,12 +64,17 @@ export default function RestaurantSearchScreen() {
   const [isBudgetModalVisible, setIsBudgetModalVisible] = useState(false);
   const [onlyOpenNow, setOnlyOpenNow] = useState<boolean>(false);
 
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [detailModalRestaurant, setDetailModalRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const debounceTimerRef = useRef<any>(null);
 
   const isBudgetFiltered = budgetRange.min > 0 || budgetRange.max < MAX_BUDGET_LIMIT;
 
@@ -106,6 +119,11 @@ export default function RestaurantSearchScreen() {
     [budgetRange, onlyOpenNow, selectedRadius, selectedRestaurant, userLoc.latitude, userLoc.longitude]
   );
 
+  // Load search history on component mount
+  useEffect(() => {
+    getSearchHistory().then(setSearchHistory);
+  }, []);
+
   // Sync params or location if changed
   useEffect(() => {
     const initialQuery = params.search || '';
@@ -114,12 +132,55 @@ export default function RestaurantSearchScreen() {
     fetchRestaurants(initialQuery, selectedRadius, budgetRange, onlyOpenNow);
   }, [params.search, fetchRestaurants, selectedRadius, budgetRange, onlyOpenNow]);
 
-  const handleSearch = (searchVal: string = query) => {
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+    setActiveTag(text);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      fetchRestaurants(text, selectedRadius, budgetRange, onlyOpenNow);
+    }, 280);
+  };
+
+  const handleSearchSubmit = (searchVal: string = query) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setIsSearchFocused(false);
+    if (searchVal.trim()) {
+      saveSearchQuery(searchVal.trim()).then(setSearchHistory);
+    }
     setActiveTag(searchVal);
     fetchRestaurants(searchVal, selectedRadius, budgetRange, onlyOpenNow);
   };
 
+  const handleSelectHistoryItem = (selectedQuery: string) => {
+    setIsSearchFocused(false);
+    setQuery(selectedQuery);
+    setActiveTag(selectedQuery);
+    saveSearchQuery(selectedQuery).then(setSearchHistory);
+    fetchRestaurants(selectedQuery, selectedRadius, budgetRange, onlyOpenNow);
+  };
+
+  const handleRemoveHistoryItem = (id: string) => {
+    removeSearchHistoryItem(id).then(setSearchHistory);
+  };
+
+  const handleClearAllHistory = () => {
+    clearAllSearchHistory().then(() => setSearchHistory([]));
+  };
+
   const handleSelectTag = (tagVal: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setIsSearchFocused(false);
+    if (tagVal.trim()) {
+      saveSearchQuery(tagVal.trim()).then(setSearchHistory);
+    }
     setActiveTag(tagVal);
     setQuery(tagVal);
     fetchRestaurants(tagVal, selectedRadius, budgetRange, onlyOpenNow);
@@ -142,6 +203,9 @@ export default function RestaurantSearchScreen() {
   };
 
   const handleResetFilters = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
     setQuery('');
     setActiveTag('');
     setSelectedRadius(null);
@@ -151,6 +215,9 @@ export default function RestaurantSearchScreen() {
   };
 
   const handleClear = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
     setQuery('');
     setActiveTag('');
     fetchRestaurants('', selectedRadius, budgetRange, onlyOpenNow);
@@ -168,6 +235,8 @@ export default function RestaurantSearchScreen() {
     (activeTag ? 1 : 0);
 
   const bottomInset = safeAreaInsets.bottom + BottomTabInset;
+  const searchDropdownTopOffset =
+    (Platform.OS === 'web' ? Spacing.three : safeAreaInsets.top + Spacing.one) + 52;
 
   return (
     <ThemedView style={styles.screenContainer}>
@@ -182,6 +251,7 @@ export default function RestaurantSearchScreen() {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
         }}
+        isRealLocation={userLoc.isRealLocation}
       />
 
       {/* 2. Floating Top Header: Search Bar & Multi-Filter Carousel */}
@@ -203,11 +273,15 @@ export default function RestaurantSearchScreen() {
                   color: theme.text,
                 },
               ]}
-              placeholder="Tìm quán ngon, món ăn, cà phê..."
+              placeholder="Tìm món ăn (phở, bún chả...) hoặc tên quán..."
               placeholderTextColor={theme.textSecondary}
               value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={() => handleSearch(query)}
+              onChangeText={handleQueryChange}
+              onFocus={() => {
+                setIsSearchFocused(true);
+                getSearchHistory().then(setSearchHistory);
+              }}
+              onSubmitEditing={() => handleSearchSubmit(query)}
               returnKeyType="search"
               clearButtonMode="while-editing"
               autoCapitalize="none"
@@ -222,7 +296,7 @@ export default function RestaurantSearchScreen() {
             )}
 
             <Pressable
-              onPress={() => handleSearch(query)}
+              onPress={() => handleSearchSubmit(query)}
               style={({ pressed }) => [styles.searchActionBtn, pressed && styles.pressed]}>
               <ThemedText type="smallBold" style={styles.searchActionText}>
                 Tìm
@@ -362,11 +436,11 @@ export default function RestaurantSearchScreen() {
       {loading && (
         <View style={styles.loadingPill}>
           <ActivityIndicator size="small" color="#FF5A5F" />
-          <ThemedText style={styles.loadingPillText}>Đang cập nhật quán...</ThemedText>
+          <ThemedText style={styles.loadingPillText}>Đang tìm quán ngon...</ThemedText>
         </View>
       )}
 
-      {/* 3. Draggable Bottom Sheet for Restaurant Cards with Distances */}
+      {/* 3. Draggable Bottom Sheet for Restaurant Cards with Distances & Empty State */}
       <RestaurantBottomSheet
         restaurants={restaurants}
         selectedRestaurant={selectedRestaurant}
@@ -376,6 +450,9 @@ export default function RestaurantSearchScreen() {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
         }}
+        searchQuery={query}
+        selectedRadiusKm={selectedRadius}
+        onClearSearch={handleClear}
         refreshing={refreshing}
         onRefresh={() => fetchRestaurants(query, selectedRadius, budgetRange, onlyOpenNow, true)}
         bottomInset={bottomInset}
@@ -398,6 +475,17 @@ export default function RestaurantSearchScreen() {
           latitude: userLoc.latitude,
           longitude: userLoc.longitude,
         }}
+      />
+
+      {/* 6. Recent Search History Dropdown Overlay */}
+      <SearchHistoryDropdown
+        visible={isSearchFocused}
+        history={searchHistory}
+        onSelectQuery={handleSelectHistoryItem}
+        onRemoveItem={handleRemoveHistoryItem}
+        onClearAll={handleClearAllHistory}
+        onClose={() => setIsSearchFocused(false)}
+        topOffset={searchDropdownTopOffset}
       />
     </ThemedView>
   );

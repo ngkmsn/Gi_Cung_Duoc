@@ -137,11 +137,15 @@ export class RestaurantService {
       const latB = typeof b.latitude === 'string' ? parseFloat(b.latitude) : b.latitude;
       const lngB = typeof b.longitude === 'string' ? parseFloat(b.longitude) : b.longitude;
 
-      if (!latA || !lngA) return 1;
-      if (!latB || !lngB) return -1;
+      const hasA = latA !== undefined && !isNaN(latA) && lngA !== undefined && !isNaN(lngA);
+      const hasB = latB !== undefined && !isNaN(latB) && lngB !== undefined && !isNaN(lngB);
 
-      const distA = calculateDistanceKm(userLat, userLng, latA, lngA);
-      const distB = calculateDistanceKm(userLat, userLng, latB, lngB);
+      if (!hasA && !hasB) return 0;
+      if (!hasA) return 1;
+      if (!hasB) return -1;
+
+      const distA = calculateDistanceKm(userLat, userLng, latA!, lngA!);
+      const distB = calculateDistanceKm(userLat, userLng, latB!, lngB!);
 
       return distA - distB;
     });
